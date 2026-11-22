@@ -1,0 +1,26 @@
+# Start Open E-lab lokaal of op een schoolserver met één commando:
+#   docker compose up -d --build
+#
+# Zonder .env-bestand draait Open E-lab meteen in demomodus op http://localhost:3000.
+# Voor een schoolinstallatie met Firebase: kopieer .env.example naar .env en vul je waarden in.
+
+services:
+  open-elab:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+        NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
+        NEXT_PUBLIC_FIRESTORE_DATABASE: ${NEXT_PUBLIC_FIRESTORE_DATABASE:-}
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET:-}
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
+      NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+      NEXT_PUBLIC_FIRESTORE_DATABASE: ${NEXT_PUBLIC_FIRESTORE_DATABASE:-}
+    restart: unless-stopped

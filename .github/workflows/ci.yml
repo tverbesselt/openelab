@@ -1,0 +1,103 @@
+# CI voor Open E-lab: elke push en pull request wordt automatisch nagekeken.
+#
+# Vijf controles, in volgorde van snel naar traag:
+#   1. lint         ESLint, zonder waarschuwingen
+#   2. typecheck    tsc --noEmit
+#   3. unit         unit-tests (Vitest)
+#   4. build        next build, zonder Firebase-variabelen (demomodus)
+#   5. regels       firestore.rules en storage.rules tegen de emulator (tests/rules)
+#   6. rooktests    Playwright: maken, oefenen via code, live-sessie (tests/e2e)
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controle:
+    name: Lint, typecheck, build en regels
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Pakketten
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit-tests
+        run: npm run test:unit
+
+      - name: Build
+        run: npm run build
+
+      - name: Emulators in cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Regels (Firestore en Storage)
+        run: npm run test:rules
+
+  rooktests:
+    name: Rooktests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: controle
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Pakketten
+        run: npm ci
+
+      - name: Browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Emulators in cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Rooktests
+        run: npm run test:e2e
+
+      - name: Rapport bewaren bij een fout
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-rapport
+          path: playwright-report
+          retention-days: 7
