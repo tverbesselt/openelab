@@ -22,4 +22,5 @@ export const flashcard: Werkvorm<"flashcard"> = {
     })),
   Speler: dynamic<SpelerProps<"flashcard">>(() => import("./Speler")),
   Afdruk: dynamic<AfdrukProps<"flashcard">>(() => import("./Afdruk")),
+  voorbeelden: () => import("./voorbeelden").then((m) => m.voorbeelden),
 };

@@ -24,4 +24,5 @@ export const lezen: Werkvorm<"lezen"> = {
   Speler: dynamic<SpelerProps<"lezen">>(() => import("./Speler")),
   Afdruk: dynamic<AfdrukProps<"lezen">>(() => import("../quiz/VragenAfdruk")),
   Leraar: dynamic<LeraarProps<"lezen">>(() => import("../quiz/Overzicht")),
+  voorbeelden: () => import("./voorbeelden").then((m) => m.voorbeelden),
 };

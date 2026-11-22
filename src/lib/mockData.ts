@@ -96,7 +96,7 @@ export const INITIAL_MAPPEN: Lesmap[] = [
     id: "org-nt2-rg2-lezen",
     title: "Lezen",
     description: "",
-    exerciseIds: [],
+    exerciseIds: ["ex-lezen-slapen"],
     creatorName: "Open E-lab",
     shareCode: "ORGRGL",
     createdAt: "2026-09-01",

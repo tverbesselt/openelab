@@ -82,9 +82,14 @@ describe("het register", () => {
 });
 
 describe("het voorbeeldmateriaal", () => {
-  it("komt uit de mappen van de werkvormen", () => {
-    expect(INITIAL_EXERCISES).toHaveLength(14);
-    expect(new Set(INITIAL_EXERCISES.map((ex) => ex.id)).size).toBe(14);
+  it("komt uit de mappen van de werkvormen en dekt elk oefeningstype", () => {
+    expect(INITIAL_EXERCISES).toHaveLength(17);
+    expect(new Set(INITIAL_EXERCISES.map((ex) => ex.id)).size).toBe(17);
+    const types = new Set(INITIAL_EXERCISES.map((ex) => ex.type));
+    const oefeningTypes = WERKVORM_LIJST.filter((w) => w.lesfase !== "facilitate").map((w) => w.id);
+    for (const type of oefeningTypes) {
+      expect(types.has(type), `voorbeeldoefening ontbreekt voor ${type}`).toBe(true);
+    }
   });
 
   it("staat onder het juiste type", async () => {
@@ -104,7 +109,7 @@ describe("het voorbeeldmateriaal", () => {
 
   it("zet voor de demo ook de codes en de maker klaar", async () => {
     const zaad = await voorbeeldmateriaal();
-    expect(Object.keys(zaad.oefeningen)).toHaveLength(14);
+    expect(Object.keys(zaad.oefeningen)).toHaveLength(17);
     expect(zaad.codes.NT2SET).toMatchObject({ soort: "map", doelId: "set-nt2-pakket" });
     for (const ex of INITIAL_EXERCISES) {
       expect(zaad.codes[ex.shareCode.toUpperCase()], ex.id).toMatchObject({ soort: "oefening", doelId: ex.id });

@@ -26,4 +26,5 @@ export const openvraag: Werkvorm<"openvraag"> = {
   },
   Speler: dynamic<SpelerProps<"openvraag">>(() => import("./Speler")),
   Afdruk: dynamic<AfdrukProps<"openvraag">>(() => import("./Afdruk")),
+  voorbeelden: () => import("./voorbeelden").then((m) => m.voorbeelden),
 };
