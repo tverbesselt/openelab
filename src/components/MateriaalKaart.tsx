@@ -14,6 +14,7 @@ import {
   Lock,
   Building2,
   Trophy,
+  Pencil,
 } from "lucide-react";
 import { useInstellingen } from "@/lib/instellingen/InstellingenProvider";
 import { Exercise } from "@/lib/types";
@@ -24,7 +25,7 @@ import {
   isKlassikaal,
   lesfaseLabel,
 } from "@/lib/labels";
-import { klassikaleStart } from "@/werkvormen/register";
+import { kanAanpassen, klassikaleStart } from "@/werkvormen/register";
 
 interface MateriaalKaartProps {
   ex: Exercise;
@@ -138,6 +139,17 @@ export function MateriaalKaart({
               >
                 <Eye className="w-4 h-4" />
               </Link>
+
+              {isEigen && kanAanpassen(ex.type) && (
+                <Link
+                  href={`/bewerken/${ex.id}`}
+                  className="p-2 rounded-lg text-slate-500 hover:text-merk-900 hover:bg-merk-50 transition-colors"
+                  title="Aanpassen"
+                  aria-label={`${ex.title} aanpassen`}
+                >
+                  <Pencil className="w-4 h-4" />
+                </Link>
+              )}
 
               <Menu label={`Meer voor ${ex.title}`}>
                 {isEigen && onInMap && (

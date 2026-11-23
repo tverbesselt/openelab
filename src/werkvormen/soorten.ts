@@ -58,6 +58,21 @@ export interface VormProps {
   setSpraakTaal: (taal: string) => void;
   /** De kiezer met de gewone uitleg. Wie een eigen woord wil, zet zelf een TaalKiezer. */
   taalKiezer: ReactNode;
+  /**
+   * Bij aanpassen: de oefening zoals ze nu is. Het formulier start dan ingevuld, en wat het
+   * bewaart komt in de plaats van deze oefening (zelfde code). Leeg bij iets nieuws.
+   */
+  bestaand?: Exercise;
+}
+
+/** De bestaande oefening, als het formulier ze aanpast en ze van deze werkvorm is. */
+export function bestaandVan<T extends ExerciseType>(p: VormProps, type: T): OefeningVan<T> | undefined {
+  return p.bestaand?.type === type ? (p.bestaand as OefeningVan<T>) : undefined;
+}
+
+/** De tekst op de knop onderaan: iets maken, of je wijzigingen bewaren. */
+export function knopTekst(p: VormProps, nieuw: string): string {
+  return p.bestaand ? "Bewaar je wijzigingen" : nieuw;
 }
 
 export interface Werkvorm<T extends ExerciseType = ExerciseType> {

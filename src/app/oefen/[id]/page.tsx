@@ -10,12 +10,13 @@ import {
   Printer,
   Trophy,
   Presentation,
+  Pencil,
 } from "lucide-react";
 import { opslag } from "@/lib/opslag";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { Exercise, Herhaling } from "@/lib/types";
 import { WERKVORMEN, inhoudSamenvatting, isEigenMateriaal, isKlassikaal } from "@/lib/labels";
-import { klassikaleStart } from "@/werkvormen/register";
+import { kanAanpassen, klassikaleStart } from "@/werkvormen/register";
 import { plan, sleutel, datumInWoorden, type Zelfoordeel } from "@/lib/herhalen";
 import { WerkvormLeraar, WerkvormSpeler } from "@/werkvormen/Weergave";
 import { ShareModal } from "@/components/ShareModal";
@@ -171,6 +172,16 @@ export default function OefenPage() {
             alleenIcoon
             className="p-2 rounded-xl text-slate-500 hover:text-merk-900 hover:bg-slate-100 transition-colors"
           />
+          {isEigenaar && kanAanpassen(exercise.type) && (
+            <Link
+              href={`/bewerken/${exercise.id}`}
+              className="p-2 rounded-xl text-slate-500 hover:text-merk-900 hover:bg-slate-100 transition-colors"
+              title="Aanpassen"
+              aria-label="Aanpassen"
+            >
+              <Pencil className="w-4 h-4" />
+            </Link>
+          )}
           {isAan("afdrukken") && (
             <Link
               href={`/afdrukken/${exercise.id}`}

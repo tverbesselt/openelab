@@ -89,6 +89,24 @@ describe("materiaal", () => {
     expect((await leraar.zichtbareOefeningen(LERAAR)).map((ex) => ex.id)).toEqual(["b"]);
   });
 
+  it("de maker past een oefening aan met dezelfde code; een collega kan dat niet", async () => {
+    const leraar = als("leraar");
+    await leraar.maakOefeningen([eenOefening("a", { cover: { soort: "afbeelding", url: "https://x.be/a.jpg" } })]);
+    const oud = (await leraar.oefening("a"))!;
+    const { cover: _weg, ...zonderCover } = oud;
+    void _weg;
+
+    await leraar.vervangOefening({ ...zonderCover, title: "Hoofdsteden van Azië" } as Exercise);
+    const nieuw = await leraar.oefening("a");
+    expect(nieuw?.title).toBe("Hoofdsteden van Azië");
+    expect(nieuw?.cover).toBeUndefined();
+    expect(await als("anoniem").viaCode("OEFA")).toEqual({ soort: "oefening", id: "a" });
+
+    // Een collega mag het materiaal zien, maar niet overschrijven.
+    await expect(als("collega").vervangOefening({ ...oud, title: "Gekaapt" })).rejects.toThrow();
+    expect((await leraar.oefening("a"))?.title).toBe("Hoofdsteden van Azië");
+  });
+
   it("exit tickets en quizresultaten: een cursist stuurt in, de maker leest", async () => {
     const leraar = als("leraar");
     await leraar.maakOefeningen([eenOefening("a")]);

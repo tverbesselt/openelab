@@ -31,7 +31,7 @@ import {
   zichtbaarVoor,
   eigenMappen,
 } from "@/lib/labels";
-import { klassikaleStart } from "@/werkvormen/register";
+import { kanAanpassen, klassikaleStart } from "@/werkvormen/register";
 import { useInstellingen } from "@/lib/instellingen/InstellingenProvider";
 import type { FunctieId } from "@/lib/instellingen/functies";
 
@@ -216,7 +216,12 @@ function LeraarStart({
 
         <div className="divide-y divide-slate-200 border-y border-slate-200">
           {recent.map((ex) => (
-            <MateriaalRegel key={ex.id} ex={ex} onDelen={setSelectedShare} />
+            <MateriaalRegel
+              key={ex.id}
+              ex={ex}
+              isEigen={isEigenMateriaal(ex, gebruiker)}
+              onDelen={setSelectedShare}
+            />
           ))}
         </div>
       </section>
@@ -246,9 +251,11 @@ function LeraarStart({
  */
 function MateriaalRegel({
   ex,
+  isEigen,
   onDelen,
 }: {
   ex: Exercise;
+  isEigen: boolean;
   onDelen: (ex: Exercise) => void;
 }) {
   const werkvorm = WERKVORMEN[ex.type];
@@ -270,6 +277,16 @@ function MateriaalRegel({
           )}
         </span>
       </Link>
+
+      {isEigen && kanAanpassen(ex.type) && (
+        <Link
+          href={`/bewerken/${ex.id}`}
+          className="shrink-0 text-xs font-bold text-slate-600 hover:text-merk-900 transition-colors"
+          aria-label={`${ex.title} aanpassen`}
+        >
+          Aanpassen
+        </Link>
+      )}
 
       {klassikaal ? (
         <Link

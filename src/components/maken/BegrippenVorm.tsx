@@ -104,7 +104,7 @@ export default function BegrippenVorm(p: VormProps) {
  * Controlestap bij een begrippenlijst: wat las Open E-lab in, en wat viel weg? Wie uit Excel
  * plakt, ziet zo meteen of de kolommen goed uit elkaar gehaald zijn.
  */
-function BegrippenVoorbeeld({ tekst }: { tekst: string }) {
+export function BegrippenVoorbeeld({ tekst }: { tekst: string }) {
   const { begrippen, overgeslagen } = leesBegrippen(tekst);
   if (begrippen.length === 0 && overgeslagen.length === 0) return null;
 

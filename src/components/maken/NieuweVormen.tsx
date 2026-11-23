@@ -3,11 +3,19 @@
 import React, { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { QuizQuestion, Rekensoort } from "@/lib/types";
-import { leesProcedures, leesSorteerItems, leesWerkwoorden, leesZinnen } from "@/lib/invoer";
+import {
+  leesProcedures,
+  leesSorteerItems,
+  leesWerkwoorden,
+  leesZinnen,
+  schrijfProcedures,
+  schrijfWerkwoorden,
+  schrijfZinnen,
+} from "@/lib/invoer";
 import { REKENTYPES } from "@/lib/rekenen";
 import { Veld, Foutmelding, MaakKnop, Toelichting, FeedbackKiezer, INVOER, INVOER_MONO } from "./Velden";
 import { InleesKnop } from "./InleesKnop";
-import type { VormProps } from "@/werkvormen/soorten";
+import { bestaandVan, knopTekst, type VormProps } from "@/werkvormen/soorten";
 
 /**
  * De maakformulieren van de werkvormen uit ronde 3. Ze delen allemaal dezelfde vorm:
@@ -24,8 +32,9 @@ const OEFEN_CONFIG = {
 /* ── Zinnen bouwen ───────────────────────────────────────────────────────── */
 
 export function ZinbouwenVorm(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [zinnen, setZinnen] = useState("");
+  const bestaand = bestaandVan(p, "zinbouwen");
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [zinnen, setZinnen] = useState(() => (bestaand ? schrijfZinnen(bestaand.content.ordenItems) : ""));
 
   const gelezen = leesZinnen(zinnen);
 
@@ -90,7 +99,7 @@ export function ZinbouwenVorm(p: VormProps) {
       {p.taalKiezer}
       {p.bestemming}
       <Foutmelding tekst={p.fout} />
-      <MaakKnop bezig={p.bezig} label="Maak mijn zinnenoefening" />
+      <MaakKnop bezig={p.bezig} label={knopTekst(p, "Maak mijn zinnenoefening")} />
     </form>
   );
 }
@@ -98,8 +107,9 @@ export function ZinbouwenVorm(p: VormProps) {
 /* ── Stappen op volgorde ─────────────────────────────────────────────────── */
 
 export function VolgordeVorm(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [procedures, setProcedures] = useState("");
+  const bestaand = bestaandVan(p, "volgorde");
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [procedures, setProcedures] = useState(() => (bestaand ? schrijfProcedures(bestaand.content.ordenItems) : ""));
 
   const gelezen = leesProcedures(procedures);
 
@@ -168,7 +178,7 @@ export function VolgordeVorm(p: VormProps) {
 
       {p.bestemming}
       <Foutmelding tekst={p.fout} />
-      <MaakKnop bezig={p.bezig} label="Maak mijn volgorde-oefening" />
+      <MaakKnop bezig={p.bezig} label={knopTekst(p, "Maak mijn volgorde-oefening")} />
     </form>
   );
 }
@@ -176,11 +186,22 @@ export function VolgordeVorm(p: VormProps) {
 /* ── Sorteren ────────────────────────────────────────────────────────────── */
 
 export function SorterenVorm(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [bakjes, setBakjes] = useState([
-    { naam: "", items: "" },
-    { naam: "", items: "" },
-  ]);
+  const bestaand = bestaandVan(p, "sorteren");
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [bakjes, setBakjes] = useState(() =>
+    bestaand
+      ? bestaand.content.categorieen.map((naam, index) => ({
+          naam,
+          items: bestaand.content.sorteerItems
+            .filter((item) => item.categorie === index)
+            .map((item) => item.tekst)
+            .join("\n"),
+        }))
+      : [
+          { naam: "", items: "" },
+          { naam: "", items: "" },
+        ]
+  );
 
   const wijzig = (index: number, veld: "naam" | "items", waarde: string) =>
     setBakjes(bakjes.map((b, i) => (i === index ? { ...b, [veld]: waarde } : b)));
@@ -294,7 +315,7 @@ export function SorterenVorm(p: VormProps) {
 
       {p.bestemming}
       <Foutmelding tekst={p.fout} />
-      <MaakKnop bezig={p.bezig} label="Maak mijn sorteeroefening" />
+      <MaakKnop bezig={p.bezig} label={knopTekst(p, "Maak mijn sorteeroefening")} />
     </form>
   );
 }
@@ -309,8 +330,13 @@ interface NieuweOpenVraag {
 const LEEG_OPEN: NieuweOpenVraag = { vraag: "", modelantwoord: "" };
 
 export function OpenVraagVorm(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [vragen, setVragen] = useState<NieuweOpenVraag[]>([{ ...LEEG_OPEN }]);
+  const bestaand = bestaandVan(p, "openvraag");
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [vragen, setVragen] = useState<NieuweOpenVraag[]>(() =>
+    bestaand?.content.openVragen.length
+      ? bestaand.content.openVragen.map((v) => ({ vraag: v.vraag, modelantwoord: v.modelantwoord }))
+      : [{ ...LEEG_OPEN }]
+  );
 
   const wijzig = (index: number, veld: keyof NieuweOpenVraag, waarde: string) =>
     setVragen(vragen.map((v, i) => (i === index ? { ...v, [veld]: waarde } : v)));
@@ -413,7 +439,7 @@ export function OpenVraagVorm(p: VormProps) {
 
       {p.bestemming}
       <Foutmelding tekst={p.fout} />
-      <MaakKnop bezig={p.bezig} label="Maak mijn open vragen" />
+      <MaakKnop bezig={p.bezig} label={knopTekst(p, "Maak mijn open vragen")} />
     </form>
   );
 }
@@ -426,18 +452,58 @@ interface NieuweLeesVraag {
   fout1: string;
   fout2: string;
   uitleg: string;
+  /**
+   * Bij aanpassen: het id van de bestaande vraag, en foute antwoorden voorbij de tweede.
+   * Een leesvraag uit een voorbeeld of import kan er meer hebben dan het formulier bij het
+   * maken toont; ze blijven staan in plaats van stil te verdwijnen.
+   */
+  id?: string;
+  meerFout?: string[];
+  waarOfNiet?: boolean;
+  /** De antwoorden in hun bewaarde volgorde: blijven ze dezelfde, dan blijft die volgorde ook. */
+  volgorde?: string[];
 }
 
 const LEEG_LEES: NieuweLeesVraag = { vraag: "", juist: "", fout1: "", fout2: "", uitleg: "" };
 
-export function LezenVorm(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [tekst, setTekst] = useState("");
-  const [vragen, setVragen] = useState<NieuweLeesVraag[]>([{ ...LEEG_LEES }]);
-  const [tweedeKans, setTweedeKans] = useState(true);
+/** Een bestaande vraag terug in de velden van het formulier. */
+function alsLeesVraag(q: QuizQuestion): NieuweLeesVraag {
+  const juistIndex = q.correctAnswers[0] ?? 0;
+  const juist = q.options[juistIndex] ?? "";
+  const [fout1 = "", fout2 = "", ...meerFout] = q.options.filter((_, i) => i !== juistIndex);
+  // De uitleg die we zelf invulden als de leraar niets typte, komt bij het bewaren vanzelf terug.
+  const uitleg = q.explanation === `Het juiste antwoord is "${juist}".` ? "" : q.explanation;
+  return {
+    vraag: q.question,
+    juist,
+    fout1,
+    fout2,
+    uitleg,
+    id: q.id,
+    ...(meerFout.length > 0 && { meerFout }),
+    ...(q.type === "true_false" && { waarOfNiet: true }),
+    volgorde: q.options,
+  };
+}
 
-  const wijzig = (index: number, veld: keyof NieuweLeesVraag, waarde: string) =>
+export function LezenVorm(p: VormProps) {
+  const bestaand = bestaandVan(p, "lezen");
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [tekst, setTekst] = useState(bestaand?.content.leestekst ?? "");
+  const [vragen, setVragen] = useState<NieuweLeesVraag[]>(() =>
+    bestaand?.content.questions.length ? bestaand.content.questions.map(alsLeesVraag) : [{ ...LEEG_LEES }]
+  );
+  // Nieuw: standaard een tweede poging. Bestaand zonder keuze: meteen het antwoord, zoals vroeger.
+  const [tweedeKans, setTweedeKans] = useState(bestaand ? bestaand.didacticConfig.tweedeKans === true : true);
+
+  const wijzig = (index: number, veld: "vraag" | "juist" | "fout1" | "fout2" | "uitleg", waarde: string) =>
     setVragen(vragen.map((v, i) => (i === index ? { ...v, [veld]: waarde } : v)));
+  const wijzigMeerFout = (index: number, plaats: number, waarde: string) =>
+    setVragen(
+      vragen.map((v, i) =>
+        i === index ? { ...v, meerFout: (v.meerFout ?? []).map((f, j) => (j === plaats ? waarde : f)) } : v
+      )
+    );
 
   const woorden = tekst.trim() ? tekst.trim().split(/\s+/).length : 0;
 
@@ -449,14 +515,29 @@ export function LezenVorm(p: VormProps) {
       return;
     }
 
-    const questions: QuizQuestion[] = bruikbaar.map((v, index) => {
-      const opties = [v.juist, v.fout1, v.fout2].map((o) => o.trim()).filter(Boolean);
+    // Een bestaande vraag houdt haar id; een nieuwe krijgt er een dat nog vrij is.
+    const bezet = new Set(bruikbaar.flatMap((v) => (v.id ? [v.id] : [])));
+    const nieuwId = () => {
+      let n = 0;
+      while (bezet.has(`lv-${n}`)) n++;
+      bezet.add(`lv-${n}`);
+      return `lv-${n}`;
+    };
+
+    const questions: QuizQuestion[] = bruikbaar.map((v) => {
+      const ingevuld = [v.juist, v.fout1, v.fout2, ...(v.meerFout ?? [])].map((o) => o.trim()).filter(Boolean);
+      // Het formulier zet het juiste antwoord eerst. Zijn de antwoorden niet veranderd, dan
+      // houden we de volgorde zoals ze was: bij waar of niet waar husselt de speler niet.
+      const zelfde =
+        v.volgorde?.length === ingevuld.length &&
+        [...v.volgorde].sort().join("\n") === [...ingevuld].sort().join("\n");
+      const opties = zelfde ? v.volgorde! : ingevuld;
       return {
-        id: `lv-${index}`,
+        id: v.id ?? nieuwId(),
         question: v.vraag.trim(),
         options: opties,
-        correctAnswers: [0],
-        type: "multiple_choice",
+        correctAnswers: [opties.indexOf(ingevuld[0])],
+        type: v.waarOfNiet && opties.length === 2 ? "true_false" : "multiple_choice",
         explanation: v.uitleg.trim() || `Het juiste antwoord is "${v.juist.trim()}".`,
       };
     });
@@ -562,6 +643,17 @@ export function LezenVorm(p: VormProps) {
               placeholder="Nog een fout antwoord (mag leeg)"
               className={INVOER}
             />
+            {vraag.meerFout?.map((fout, plaats) => (
+              <input
+                key={plaats}
+                type="text"
+                value={fout}
+                onChange={(e) => wijzigMeerFout(index, plaats, e.target.value)}
+                placeholder="Nog een fout antwoord (mag leeg)"
+                aria-label={`Fout antwoord ${plaats + 3}`}
+                className={INVOER}
+              />
+            ))}
           </div>
           <input
             type="text"
@@ -586,7 +678,7 @@ export function LezenVorm(p: VormProps) {
       {p.taalKiezer}
       {p.bestemming}
       <Foutmelding tekst={p.fout} />
-      <MaakKnop bezig={p.bezig} label="Maak mijn leesoefening" />
+      <MaakKnop bezig={p.bezig} label={knopTekst(p, "Maak mijn leesoefening")} />
     </form>
   );
 }
@@ -594,8 +686,9 @@ export function LezenVorm(p: VormProps) {
 /* ── Werkwoorden ─────────────────────────────────────────────────────────── */
 
 export function WerkwoordenVorm(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [regels, setRegels] = useState("");
+  const bestaand = bestaandVan(p, "werkwoorden");
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [regels, setRegels] = useState(() => (bestaand ? schrijfWerkwoorden(bestaand.content.werkwoorden) : ""));
 
   const gelezen = leesWerkwoorden(regels);
   const aantalVormen = gelezen.reduce((som, w) => som + w.vormen.length, 0);
@@ -668,7 +761,7 @@ export function WerkwoordenVorm(p: VormProps) {
       {p.taalKiezer}
       {p.bestemming}
       <Foutmelding tekst={p.fout} />
-      <MaakKnop bezig={p.bezig} label="Maak mijn werkwoordenoefening" />
+      <MaakKnop bezig={p.bezig} label={knopTekst(p, "Maak mijn werkwoordenoefening")} />
     </form>
   );
 }
@@ -676,9 +769,10 @@ export function WerkwoordenVorm(p: VormProps) {
 /* ── Rekenen ─────────────────────────────────────────────────────────────── */
 
 export function RekenenVorm(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [soort, setSoort] = useState<Rekensoort>("procent");
-  const [aantal, setAantal] = useState(10);
+  const bestaand = bestaandVan(p, "rekenen");
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [soort, setSoort] = useState<Rekensoort>(bestaand?.content.rekenopdracht.soort ?? "procent");
+  const [aantal, setAantal] = useState(bestaand?.content.rekenopdracht.aantal ?? 10);
 
   const gekozen = REKENTYPES.find((t) => t.soort === soort) ?? REKENTYPES[0];
 
@@ -769,7 +863,7 @@ export function RekenenVorm(p: VormProps) {
 
       {p.bestemming}
       <Foutmelding tekst={p.fout} />
-      <MaakKnop bezig={p.bezig} label="Maak mijn rekenoefening" />
+      <MaakKnop bezig={p.bezig} label={knopTekst(p, "Maak mijn rekenoefening")} />
     </form>
   );
 }

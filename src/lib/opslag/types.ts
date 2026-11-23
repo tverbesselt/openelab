@@ -31,6 +31,12 @@ export interface Opslag {
   /** Nieuw materiaal wegschrijven, elk met zijn eigen code. */
   maakOefeningen(nieuwe: Exercise[]): Promise<void>;
   wijzigOefening(id: string, wijziging: Partial<Exercise>): Promise<void>;
+  /**
+   * Een aangepaste oefening in de plaats van de oude zetten: zelfde id, zelfde code. Anders
+   * dan wijzigOefening verdwijnen velden die de nieuwe versie niet meer heeft, zoals een
+   * weggehaalde omslagfoto.
+   */
+  vervangOefening(oefening: Exercise): Promise<void>;
   verwijderOefening(id: string): Promise<void>;
 
   /* Mappen */

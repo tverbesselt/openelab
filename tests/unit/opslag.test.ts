@@ -128,6 +128,37 @@ describe("materiaal", () => {
     expect(gelezen?.title).toBe("Nieuwe titel");
     expect(gelezen?.shareCode).toBe("codea");
   });
+
+  it("vervangt een aangepaste oefening: zelfde code, weggehaalde velden verdwijnen", async () => {
+    const cover = { soort: "afbeelding" as const, url: "https://voorbeeld.be/a.jpg", alt: "Omslag" };
+    await opslag.maakOefeningen([oefening("a", { cover })]);
+    const oud = (await opslag.oefening("a"))!;
+
+    const { cover: _weg, ...zonderCover } = oud;
+    void _weg;
+    await opslag.vervangOefening({
+      ...zonderCover,
+      title: "Aangepast",
+      content: { questions: [{ id: "q-0", question: "Twee plus twee?", options: ["4", "5"], correctAnswers: [0], type: "multiple_choice", explanation: "" }] },
+    } as Exercise);
+
+    const gelezen = await opslag.oefening("a");
+    expect(gelezen?.title).toBe("Aangepast");
+    expect(gelezen?.cover).toBeUndefined();
+    expect(await opslag.viaCode("codea")).toEqual({ soort: "oefening", id: "a" });
+    // De lijst van de leraar toont de nieuwe versie.
+    const [regel] = await opslag.zichtbareOefeningen(LERAAR);
+    expect(regel.title).toBe("Aangepast");
+  });
+
+  it("weigert een aanpassing die de code zou veranderen of een gewiste oefening terugzet", async () => {
+    await opslag.maakOefeningen([oefening("a")]);
+    const oud = (await opslag.oefening("a"))!;
+    await expect(opslag.vervangOefening({ ...oud, shareCode: "ANDERS" })).rejects.toThrow();
+    await opslag.verwijderOefening("a");
+    await expect(opslag.vervangOefening(oud)).rejects.toThrow();
+    expect(await opslag.oefening("a")).toBeNull();
+  });
 });
 
 describe("mappen", () => {

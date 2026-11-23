@@ -56,3 +56,8 @@ export function leesBegrippen(tekst: string): Inlezing {
 
   return { begrippen, overgeslagen };
 }
+
+/** En terug: `begrip;betekenis`, één per regel, om een bestaande lijst aan te passen. */
+export function schrijfBegrippen(begrippen: Begrip[]): string {
+  return begrippen.map((b) => `${b.word};${b.translation}`).join("\n");
+}

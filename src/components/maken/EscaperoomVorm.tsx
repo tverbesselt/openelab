@@ -6,6 +6,7 @@ import { QuizMedia, Slot } from "@/lib/types";
 import { leesAntwoorden } from "@/lib/escaperoom";
 import { MediaKiezer } from "./MediaKiezer";
 import type { VormProps } from "./NieuweVormen";
+import { bestaandVan, knopTekst } from "@/werkvormen/soorten";
 import { Veld, Foutmelding, MaakKnop, Toelichting, INVOER } from "./Velden";
 
 const KLEIN_VELD =
@@ -37,10 +38,23 @@ const leegSlot = (): NieuwSlot => ({
  * opdrachten met antwoorden is al een volwaardige escaperoom.
  */
 export function EscaperoomVorm(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [verhaal, setVerhaal] = useState("");
-  const [afloop, setAfloop] = useState("");
-  const [sloten, setSloten] = useState<NieuwSlot[]>(() => [leegSlot(), leegSlot(), leegSlot()]);
+  const bestaand = bestaandVan(p, "escaperoom");
+  const kamer = bestaand?.content.escaperoom;
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [verhaal, setVerhaal] = useState(kamer?.verhaal ?? "");
+  const [afloop, setAfloop] = useState(kamer?.afloop ?? "");
+  const [sloten, setSloten] = useState<NieuwSlot[]>(() =>
+    kamer?.sloten.length
+      ? kamer.sloten.map((s) => ({
+          ...leegSlot(),
+          opdracht: s.opdracht,
+          juist: s.antwoorden[0] ?? "",
+          andere: s.antwoorden.slice(1).join("\n"),
+          hint: s.hint ?? "",
+          media: s.media,
+        }))
+      : [leegSlot(), leegSlot(), leegSlot()]
+  );
   const [uploads, setUploads] = useState(0);
 
   const wijzig = (sleutel: string, veld: keyof Omit<NieuwSlot, "sleutel" | "media">, waarde: string) =>
@@ -229,7 +243,7 @@ export function EscaperoomVorm(p: VormProps) {
 
       {p.bestemming}
       <Foutmelding tekst={p.fout} />
-      <MaakKnop bezig={p.bezig} uploads={uploads} label="Maak mijn escaperoom" />
+      <MaakKnop bezig={p.bezig} uploads={uploads} label={knopTekst(p, "Maak mijn escaperoom")} />
     </form>
   );
 }

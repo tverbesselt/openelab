@@ -5,6 +5,7 @@ import { Check, Plus, Trash2 } from "lucide-react";
 import { EXIT_TICKET_SETS, type Vragenset } from "@/lib/studietips";
 import { Veld, Foutmelding, MaakKnop, Toelichting, INVOER } from "./Velden";
 import type { VormProps } from "./NieuweVormen";
+import { bestaandVan, knopTekst } from "@/werkvormen/soorten";
 
 const MAX_VRAGEN = 5;
 
@@ -14,8 +15,9 @@ const MAX_VRAGEN = 5;
  * er zelf een. Cursisten antwoorden anoniem; de antwoorden verschijnen bij de oefening.
  */
 export function ExitTicketVorm(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [vragen, setVragen] = useState<string[]>([]);
+  const bestaand = bestaandVan(p, "exitticket");
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [vragen, setVragen] = useState<string[]>(() => bestaand?.content.exitTicketPrompts ?? []);
 
   const ingevuld = vragen.map((v) => v.trim()).filter(Boolean);
   const vol = vragen.length >= MAX_VRAGEN;
@@ -164,7 +166,7 @@ export function ExitTicketVorm(p: VormProps) {
 
       {p.bestemming}
       <Foutmelding tekst={p.fout} />
-      <MaakKnop bezig={p.bezig} label="Maak mijn exit ticket" />
+      <MaakKnop bezig={p.bezig} label={knopTekst(p, "Maak mijn exit ticket")} />
     </form>
   );
 }

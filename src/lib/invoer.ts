@@ -79,3 +79,27 @@ export function leesWerkwoorden(tekst: string): WerkwoordItem[] {
     })
     .filter((item) => item.infinitief && item.vormen.length > 0);
 }
+
+/*
+ * En terug: bestaande inhoud zoals de leraar ze zou typen, om ze aan te passen. Wat je
+ * hiermee schrijft, leest de functie erboven opnieuw in tot dezelfde inhoud.
+ */
+
+/** Eén zin per regel, de woorden met een spatie ertussen. */
+export function schrijfZinnen(items: OrdenItem[]): string {
+  return items.map((item) => item.delen.join(" ")).join("\n");
+}
+
+/** `opdracht > stap > stap`, één procedure per regel. */
+export function schrijfProcedures(items: OrdenItem[]): string {
+  return items
+    .map((item) => [item.opdracht, ...item.delen].filter((deel) => deel?.trim()).join(" > "))
+    .join("\n");
+}
+
+/** `infinitief; persoon=vorm; persoon=vorm`, één werkwoord per regel. */
+export function schrijfWerkwoorden(items: WerkwoordItem[]): string {
+  return items
+    .map((item) => [item.infinitief, ...item.vormen.map((v) => `${v.persoon}=${v.vorm}`)].join("; "))
+    .join("\n");
+}

@@ -5,6 +5,7 @@ import { Plus, Trash2, Timer, Image as ImageIcon } from "lucide-react";
 import { Exercise, QuizMedia, QuizQuestion } from "@/lib/types";
 import { FotoKiezer, MediaKiezer, OptieFoto } from "./MediaKiezer";
 import type { VormProps } from "./NieuweVormen";
+import { bestaandVan, knopTekst } from "@/werkvormen/soorten";
 import { Veld, Foutmelding, MaakKnop, FeedbackKiezer, INVOER } from "./Velden";
 
 const KLEIN_VELD =
@@ -43,6 +44,13 @@ interface NieuweOptie {
 interface NieuweVraag {
   /** Vaste sleutel, zodat een vraag verwijderen de media van de volgende niet verschuift. */
   sleutel: string;
+  /**
+   * Bij aanpassen: het id van de bestaande vraag. Dat blijft, zodat de struikelvragen en de
+   * herhaling van cursisten bij dezelfde vraag blijven horen.
+   */
+  id?: string;
+  /** Bij aanpassen: dit was een waar-of-niet-waarvraag. Zo blijft ze dat, zolang het kan. */
+  waarOfNiet?: boolean;
   soort: Soort;
   /** De vraag, de opdracht (volgorde) of de titel (dia). */
   vraag: string;
@@ -79,6 +87,62 @@ const legeVraag = (): NieuweVraag => ({
   punten: 1,
 });
 
+/** Een bestaande quizvraag terug in de velden van het formulier. */
+function alsNieuweVraag(q: QuizQuestion): NieuweVraag {
+  const basis: NieuweVraag = {
+    ...legeVraag(),
+    id: q.id,
+    vraag: q.question,
+    uitleg: q.explanation ?? "",
+    media: q.media,
+    seconden: q.seconden,
+    punten: q.punten ?? 1,
+  };
+
+  if (q.type === "dia") return { ...basis, soort: "dia" };
+
+  if (q.type === "typ") {
+    const antwoorden = q.antwoorden ?? [];
+    const juist = antwoorden[0] ?? "";
+    return {
+      ...basis,
+      soort: "typ",
+      juist,
+      andere: antwoorden.slice(1).join("\n"),
+      // De uitleg die we zelf invulden als de leraar niets typte, komt bij het bewaren vanzelf terug.
+      uitleg: basis.uitleg === `Het juiste antwoord is "${juist}".` ? "" : basis.uitleg,
+    };
+  }
+
+  if (q.type === "volgorde") {
+    const delen = [...q.options];
+    while (delen.length < MIN_DELEN) delen.push("");
+    return {
+      ...basis,
+      soort: "volgorde",
+      delen,
+      uitleg: basis.uitleg === `De juiste volgorde is: ${q.options.join(" → ")}.` ? "" : basis.uitleg,
+    };
+  }
+
+  const juisteTeksten = q.correctAnswers.map((i) => `"${q.options[i]}"`);
+  const zelfIngevuld =
+    juisteTeksten.length > 1
+      ? `De juiste antwoorden zijn ${juisteTeksten.join(", ")}.`
+      : `Het juiste antwoord is ${juisteTeksten[0]}.`;
+  return {
+    ...basis,
+    soort: "keuze",
+    waarOfNiet: q.type === "true_false",
+    opties: q.options.map((tekst, i) => ({
+      ...legeOptie(q.correctAnswers.includes(i)),
+      tekst,
+      beeld: q.optieMedia?.[i] ?? undefined,
+    })),
+    uitleg: basis.uitleg === zelfIngevuld ? "" : basis.uitleg,
+  };
+}
+
 function toonTijd(s: number): string {
   if (s < 60) return `${s} seconden`;
   const min = s / 60;
@@ -94,6 +158,8 @@ function schoneMedia(m: QuizMedia, alt = m.alt): QuizMedia {
     ...(beschrijving && { alt: beschrijving }),
     ...(m.start !== undefined && { start: m.start }),
     ...(m.eind !== undefined && { eind: m.eind }),
+    // De licentie van een vrije afbeelding vraagt dat de maker vermeld blijft.
+    ...(m.bron && { bron: m.bron }),
   };
 }
 
@@ -114,6 +180,15 @@ function bouwVragen(vragen: NieuweVraag[]): { fout: string } | { questions: Quiz
   const ingevuld = vragen.filter(heeftInhoud);
   if (ingevuld.length === 0) return { fout: "Vul minstens één vraag in." };
 
+  // Een bestaande vraag houdt haar id; een nieuwe krijgt er een dat nog vrij is.
+  const bezet = new Set(ingevuld.flatMap((v) => (v.id ? [v.id] : [])));
+  const nieuwId = () => {
+    let n = 0;
+    while (bezet.has(`q-${n}`)) n++;
+    bezet.add(`q-${n}`);
+    return `q-${n}`;
+  };
+
   const questions: QuizQuestion[] = [];
   for (const v of ingevuld) {
     const nr = vragen.indexOf(v) + 1;
@@ -124,7 +199,7 @@ function bouwVragen(vragen: NieuweVraag[]): { fout: string } | { questions: Quiz
       ...(v.seconden !== undefined && { seconden: v.seconden }),
       ...(v.punten !== 1 && v.soort !== "dia" && { punten: v.punten }),
     };
-    const id = `q-${questions.length}`;
+    const id = v.id ?? nieuwId();
 
     if (v.soort === "dia") {
       if (!vraag) return { fout: `Dia ${nr} heeft een titel nodig.` };
@@ -198,7 +273,12 @@ function bouwVragen(vragen: NieuweVraag[]): { fout: string } | { questions: Quiz
       question: vraag,
       options: teksten,
       correctAnswers: juist,
-      type: juist.length > 1 ? "multiple_response" : "multiple_choice",
+      type:
+        juist.length > 1
+          ? "multiple_response"
+          : v.waarOfNiet && opties.length === 2
+            ? "true_false"
+            : "multiple_choice",
       ...(opties.some((o) => o.beeld) && {
         optieMedia: opties.map((o, i) => (o.beeld ? schoneMedia(o.beeld, teksten[i]) : null)),
       }),
@@ -219,11 +299,15 @@ function bouwVragen(vragen: NieuweVraag[]): { fout: string } | { questions: Quiz
  * Quizwedstrijd; daarom staan ze ingeklapt.
  */
 export function QuizVorm(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [cover, setCover] = useState<QuizMedia | undefined>();
+  const bestaand = bestaandVan(p, "quiz");
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [cover, setCover] = useState<QuizMedia | undefined>(bestaand?.cover);
   const [metCover, setMetCover] = useState(false);
-  const [tweedeKans, setTweedeKans] = useState(true);
-  const [vragen, setVragen] = useState<NieuweVraag[]>(() => [legeVraag()]);
+  // Nieuw: standaard een tweede poging. Bestaand zonder keuze: meteen het antwoord, zoals vroeger.
+  const [tweedeKans, setTweedeKans] = useState(bestaand ? bestaand.didacticConfig.tweedeKans === true : true);
+  const [vragen, setVragen] = useState<NieuweVraag[]>(() =>
+    bestaand?.content.questions.length ? bestaand.content.questions.map(alsNieuweVraag) : [legeVraag()]
+  );
   // Hoeveel foto's of fragmenten nog aan het uploaden zijn: zolang dat loopt, wacht bewaren.
   const [uploads, setUploads] = useState(0);
   const onBezig = (b: boolean) => setUploads((n) => Math.max(0, n + (b ? 1 : -1)));
@@ -472,7 +556,7 @@ export function QuizVorm(p: VormProps) {
 
       {p.bestemming}
       <Foutmelding tekst={p.fout} />
-      <MaakKnop bezig={p.bezig} uploads={uploads} label="Maak mijn quiz" />
+      <MaakKnop bezig={p.bezig} uploads={uploads} label={knopTekst(p, "Maak mijn quiz")} />
     </form>
   );
 }

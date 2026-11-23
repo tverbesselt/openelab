@@ -1,6 +1,7 @@
 import type { Exercise, ExerciseType } from "@/lib/types";
 import type { FunctieId } from "@/lib/instellingen/functies";
 import type { Werkvorm } from "./soorten";
+import { isBegrippenType } from "@/lib/begrippenBewerken";
 import { poll } from "./poll";
 import { wordcloud } from "./wordcloud";
 import { tekenen } from "./tekenen";
@@ -70,6 +71,14 @@ export const WERKVORM_LIJST: EenWerkvorm[] = Object.values(WERKVORMEN);
  */
 export function werkvormVan(ex: Exercise): Werkvorm {
   return WERKVORMEN[ex.type] as unknown as Werkvorm;
+}
+
+/**
+ * Kan je materiaal van deze werkvorm aanpassen? Ja als er een formulier voor is, of als het
+ * uit een begrippenlijst komt. Klastools hebben geen inhoud om aan te passen.
+ */
+export function kanAanpassen(type: ExerciseType): boolean {
+  return isBegrippenType(type) || !!(WERKVORMEN[type] as unknown as Werkvorm).maken;
 }
 
 /** Hoeveel items zitten er in deze oefening? */

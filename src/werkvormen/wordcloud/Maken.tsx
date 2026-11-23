@@ -3,11 +3,11 @@
 import React, { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { Veld, Foutmelding } from "@/components/maken/Velden";
-import type { VormProps } from "../soorten";
+import { bestaandVan, knopTekst, type VormProps } from "../soorten";
 
 /** Eén vraag waarop elke cursist één woord typt. */
 export default function Maken(p: VormProps) {
-  const [wolkVraag, setWolkVraag] = useState("");
+  const [wolkVraag, setWolkVraag] = useState(bestaandVan(p, "wordcloud")?.content.wordCloudPrompt ?? "");
 
   const maak = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +65,7 @@ export default function Maken(p: VormProps) {
         disabled={p.bezig}
         className="w-full py-3 rounded-xl bg-merk-800 hover:bg-merk-900 disabled:opacity-60 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2"
       >
-        <span>{p.bezig ? "Bezig met bewaren ..." : "Maak mijn woordwolk"}</span>
+        <span>{p.bezig ? "Bezig met bewaren ..." : knopTekst(p, "Maak mijn woordwolk")}</span>
         <ArrowRight className="w-4 h-4" />
       </button>
     </form>

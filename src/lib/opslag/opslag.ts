@@ -110,6 +110,15 @@ export function maakOpslag(db: Databank): Opslag {
       await db.schrijf({ soort: "wijzig", pad: `${OEFENINGEN}/${id}`, data: wijziging });
     },
 
+    async vervangOefening(oefening) {
+      const pad = `${OEFENINGEN}/${oefening.id}`;
+      const bestaand = await db.lees<Exercise>(pad);
+      if (!bestaand) throw new Error("Deze oefening bestaat niet meer.");
+      // De code hoort bij de oefening; een aanpassing mag ze niet loskoppelen.
+      if (bestaand.shareCode !== oefening.shareCode) throw new Error("De code van een oefening verandert niet.");
+      await db.schrijf({ soort: "zet", pad, data: oefening });
+    },
+
     async verwijderOefening(id) {
       const pad = `${OEFENINGEN}/${id}`;
       const bestaand = await db.lees<Exercise>(pad);

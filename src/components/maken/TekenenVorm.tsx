@@ -5,6 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { QuizMedia, Tekenopdracht } from "@/lib/types";
 import { FotoKiezer } from "./MediaKiezer";
 import type { VormProps } from "./NieuweVormen";
+import { bestaandVan, knopTekst } from "@/werkvormen/soorten";
 import { Veld, Foutmelding, MaakKnop, Toelichting, INVOER } from "./Velden";
 
 const KLEIN_VELD =
@@ -26,8 +27,13 @@ const legeOpdracht = (): NieuweOpdracht => ({ sleutel: `t${++volgnummer}`, naam:
  * vóór het tekenen.
  */
 export function TekenenVorm(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [opdrachten, setOpdrachten] = useState<NieuweOpdracht[]>(() => [legeOpdracht(), legeOpdracht(), legeOpdracht()]);
+  const bestaand = bestaandVan(p, "tekenen");
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [opdrachten, setOpdrachten] = useState<NieuweOpdracht[]>(() =>
+    bestaand?.content.tekenopdrachten.length
+      ? bestaand.content.tekenopdrachten.map((o) => ({ ...legeOpdracht(), naam: o.naam, beeld: o.beeld }))
+      : [legeOpdracht(), legeOpdracht(), legeOpdracht()]
+  );
   const [uploads, setUploads] = useState(0);
 
   const gevuld = opdrachten.filter((o) => o.naam.trim() && o.beeld?.url);
@@ -49,7 +55,13 @@ export function TekenenVorm(p: VormProps) {
     const klaar: Tekenopdracht[] = gevuld.map((o, i) => ({
       id: `teken-${i + 1}`,
       naam: o.naam.trim(),
-      beeld: { soort: "afbeelding", url: o.beeld!.url, alt: o.beeld!.alt?.trim() || o.naam.trim() },
+      beeld: {
+        soort: "afbeelding",
+        url: o.beeld!.url,
+        alt: o.beeld!.alt?.trim() || o.naam.trim(),
+        // De licentie van een vrije afbeelding vraagt dat de maker vermeld blijft.
+        ...(o.beeld!.bron && { bron: o.beeld!.bron }),
+      },
     }));
 
     p.bewaar([
@@ -151,7 +163,7 @@ export function TekenenVorm(p: VormProps) {
 
       {p.bestemming}
       <Foutmelding tekst={p.fout} />
-      <MaakKnop bezig={p.bezig} uploads={uploads} label="Maak mijn tekenreeks" />
+      <MaakKnop bezig={p.bezig} uploads={uploads} label={knopTekst(p, "Maak mijn tekenreeks")} />
     </form>
   );
 }

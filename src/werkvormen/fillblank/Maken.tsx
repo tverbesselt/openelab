@@ -7,12 +7,15 @@ import type { FillBlankItem } from "@/lib/types";
 import { Veld, Foutmelding } from "@/components/maken/Velden";
 import { InleesKnop } from "@/components/maken/InleesKnop";
 import { TaalKiezer } from "@/components/maken/TaalKiezer";
-import type { VormProps } from "../soorten";
+import { bestaandVan, knopTekst, type VormProps } from "../soorten";
 
 /** Zinnen met een weggelaten woord, tussen dubbele haken getypt. */
 export default function Maken(p: VormProps) {
-  const [titel, setTitel] = useState("");
-  const [zinnen, setZinnen] = useState("");
+  const bestaand = bestaandVan(p, "fillblank");
+  const [titel, setTitel] = useState(bestaand?.title ?? "");
+  const [zinnen, setZinnen] = useState(
+    () => bestaand?.content.fillBlanks.map((f) => f.textWithBlanks).join("\n") ?? ""
+  );
 
   const maak = (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,7 +104,7 @@ export default function Maken(p: VormProps) {
         disabled={p.bezig}
         className="w-full py-3 rounded-xl bg-merk-800 hover:bg-merk-900 disabled:opacity-60 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2"
       >
-        <span>{p.bezig ? "Bezig met bewaren ..." : "Maak mijn invuloefening"}</span>
+        <span>{p.bezig ? "Bezig met bewaren ..." : knopTekst(p, "Maak mijn invuloefening")}</span>
         <ArrowRight className="w-4 h-4" />
       </button>
     </form>

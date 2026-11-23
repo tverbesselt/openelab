@@ -3,12 +3,17 @@
 import React, { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { Veld, Foutmelding } from "@/components/maken/Velden";
-import type { VormProps } from "../soorten";
+import { bestaandVan, knopTekst, type VormProps } from "../soorten";
 
 /** Een stemvraag met vaste antwoorden, voor het digibord. */
 export default function Maken(p: VormProps) {
-  const [vraag, setVraag] = useState("");
-  const [opties, setOpties] = useState(["", "", "", ""]);
+  const bestaand = bestaandVan(p, "poll")?.content;
+  const [vraag, setVraag] = useState(bestaand?.pollQuestion ?? "");
+  // Altijd minstens vier vakjes: zo kan je bij het aanpassen ook een antwoord toevoegen.
+  const [opties, setOpties] = useState<string[]>(() => {
+    const ingevuld = bestaand?.pollOptions ?? [];
+    return [...ingevuld, ...Array<string>(Math.max(0, 4 - ingevuld.length)).fill("")];
+  });
 
   const maak = (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,7 +78,7 @@ export default function Maken(p: VormProps) {
         disabled={p.bezig}
         className="w-full py-3 rounded-xl bg-merk-800 hover:bg-merk-900 disabled:opacity-60 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2"
       >
-        <span>{p.bezig ? "Bezig met bewaren ..." : "Maak mijn poll"}</span>
+        <span>{p.bezig ? "Bezig met bewaren ..." : knopTekst(p, "Maak mijn poll")}</span>
         <ArrowRight className="w-4 h-4" />
       </button>
     </form>
