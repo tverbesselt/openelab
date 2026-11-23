@@ -5,13 +5,11 @@ import {
   ArrowLeft,
   ArrowRight,
   Download,
-  Expand,
   Eye,
   EyeOff,
   Images,
   Printer,
   QrCode,
-  Shrink,
   Square,
   Timer,
   Trash2,
@@ -22,6 +20,7 @@ import { LiveSessie, OefeningVan, TekenToestand, Tekening, Tekenopdracht } from 
 import { bestandsnaam, downloadAlsPng, klok, perOpdracht, resterend } from "@/lib/tekenen";
 import { Pincode } from "@/components/bord/BordLeraar";
 import { Vergelijk } from "./Vergelijk";
+import { VOLSCHERM_KLASSE, VolledigSchermKnop, useVolledigScherm } from "@/components/VolledigScherm";
 
 /**
  * Teken uit je geheugen, zoals de leraar het projecteert. Groot in beeld staat alleen de
@@ -45,7 +44,8 @@ export function TekenenBord({
   const [weergave, setWeergave] = useState<"les" | "resultaten">("les");
   const [toonHuidige, setToonHuidige] = useState(false);
   const [groot, setGroot] = useState<string | null>(null);
-  const [vol, setVol] = useState(false);
+  // Esc sluit hier eerst een grote tekening; daarom regelt dit scherm Esc zelf.
+  const { ref: volRef, actief: vol, wissel: wisselVol, sluit: sluitVol } = useVolledigScherm({ esc: false });
   const [toonCode, setToonCode] = useState(true);
   const [fout, setFout] = useState("");
   const [nu, setNu] = useState(() => Date.now());
@@ -146,7 +146,7 @@ export function TekenenBord({
       if (e.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
       if (e.key === "Escape") {
         if (groot) setGroot(null);
-        else if (vol) setVol(false);
+        else if (vol) sluitVol();
         return;
       }
       if (groot || weergave !== "les") return;
@@ -164,11 +164,7 @@ export function TekenenBord({
   const knopHoofd = `${knop} bg-merk-800 border-merk-800 text-white hover:bg-merk-900`;
 
   return (
-    <div
-      className={
-        vol ? "fixed inset-0 z-50 overflow-y-auto bg-[var(--achtergrond)] p-4 sm:p-6" : "max-w-7xl mx-auto u-fade"
-      }
-    >
+    <div ref={volRef} className={vol ? VOLSCHERM_KLASSE : "max-w-7xl mx-auto u-fade"}>
       {/* Bediening */}
       <div className="flex flex-wrap items-center gap-2 mb-4 niet-afdrukken">
         {afgesloten ? (
@@ -211,10 +207,7 @@ export function TekenenBord({
             Afdrukken of pdf
           </button>
         )}
-        <button onClick={() => setVol((v) => !v)} className={knopRustig}>
-          {vol ? <Shrink className="w-3.5 h-3.5" /> : <Expand className="w-3.5 h-3.5" />}
-          {vol ? "Kleiner" : "Volledig scherm"}
-        </button>
+        <VolledigSchermKnop actief={vol} onClick={wisselVol} className={knopRustig} />
       </div>
 
       {fout && (

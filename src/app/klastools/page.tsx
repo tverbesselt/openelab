@@ -9,6 +9,7 @@ import { AudioNaarTekst } from "@/components/tools/AudioNaarTekst";
 import { KLASTOOLS } from "@/lib/labels";
 import { useInstellingen } from "@/lib/instellingen/InstellingenProvider";
 import { Uitgeschakeld } from "@/components/FunctiePoort";
+import { VOLSCHERM_KLASSE, VolledigSchermKnop, useVolledigScherm } from "@/components/VolledigScherm";
 
 type ToolId = "timer" | "randomizer" | "groups" | "audiotekst";
 
@@ -24,6 +25,8 @@ function KlastoolsInhoud() {
   // "groups" is de groepenmaker; de andere ids zijn gelijk aan hun functie.
   const tools = KLASTOOLS.filter((k) => isAan(k.id === "groups" ? "groupmaker" : k.id));
   const [actief, setActief] = useState<ToolId>("timer");
+  // De tool alleen op het scherm, groot genoeg voor achteraan in de klas.
+  const volScherm = useVolledigScherm();
 
   useEffect(() => {
     const param = searchParams.get("tool");
@@ -73,11 +76,26 @@ function KlastoolsInhoud() {
 
       {huidig && <p className="text-xs text-slate-600 text-center">{huidig.uitleg}</p>}
 
-      <div>
+      <div
+        ref={volScherm.ref}
+        className={volScherm.actief ? `${VOLSCHERM_KLASSE} flex flex-col` : undefined}
+      >
+        {/* Audio naar tekst is werk aan je eigen bureau, niets om te projecteren. */}
+        {huidig && huidig.id !== "audiotekst" && (
+          <div className="flex justify-end mb-3">
+            <VolledigSchermKnop
+              actief={volScherm.actief}
+              onClick={volScherm.wissel}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border bg-white border-slate-200 text-slate-700 hover:border-merk text-xs font-bold transition-colors"
+            />
+          </div>
+        )}
+        <div className={volScherm.actief ? "my-auto w-full max-w-3xl mx-auto py-6" : undefined}>
         {huidig?.id === "timer" && <ClassroomTimer />}
         {huidig?.id === "randomizer" && <StudentRandomizer />}
         {huidig?.id === "groups" && <GroupGenerator />}
         {huidig?.id === "audiotekst" && <AudioNaarTekst />}
+        </div>
       </div>
     </div>
   );

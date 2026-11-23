@@ -7,6 +7,7 @@ import { merkTint } from "@/lib/instellingen/kleur";
 import { opslagGedeeld } from "@/lib/opslag";
 import type { LopendeSessie } from "./useLiveSessie";
 import { DemoStemmen } from "./DemoStemmen";
+import { VOLSCHERM_KLASSE, VolledigSchermKnop, useVolledigScherm } from "@/components/VolledigScherm";
 
 /**
  * Het kader rond elk projectiescherm: de vraag, de QR-code met de pincode, de teller en de
@@ -26,6 +27,7 @@ export function Projectiekader({
   children: React.ReactNode;
 }) {
   const { sessie, antwoorden, fout, wijzig, sluitAf } = lopend;
+  const volScherm = useVolledigScherm();
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [joinUrl, setJoinUrl] = useState("");
 
@@ -45,7 +47,10 @@ export function Projectiekader({
   const pincode = `${sessie.code.slice(0, 3)} ${sessie.code.slice(3)}`;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 u-fade">
+    <div
+      ref={volScherm.ref}
+      className={volScherm.actief ? `${VOLSCHERM_KLASSE} space-y-4` : "max-w-4xl mx-auto space-y-4 u-fade"}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button
           onClick={sluitAf}
@@ -66,6 +71,12 @@ export function Projectiekader({
               : "Toon de tussenstand aan cursisten"}
           </span>
         </button>
+
+        <VolledigSchermKnop
+          actief={volScherm.actief}
+          onClick={volScherm.wissel}
+          className="text-xs font-bold text-slate-500 hover:text-merk-900 flex items-center gap-1"
+        />
       </div>
 
       {fout && (

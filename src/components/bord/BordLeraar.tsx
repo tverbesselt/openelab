@@ -5,14 +5,12 @@ import QRCode from "qrcode";
 import { merkTint } from "@/lib/instellingen/kleur";
 import {
   CheckCheck,
-  Expand,
   Lock,
   LockOpen,
   Plus,
   Printer,
   QrCode,
   Settings2,
-  Shrink,
   Square,
   X,
 } from "lucide-react";
@@ -23,6 +21,7 @@ import { MAX_TEKST, nieuwBordId, ordenBord, soortLabel } from "@/lib/bord";
 import { BordKaart, type KaartActies } from "./BordKaart";
 import { BordToevoegen, type NieuwKaartje } from "./BordToevoegen";
 import { BordInstellingenVelden, schoonInstellingen } from "./BordOpzet";
+import { VOLSCHERM_KLASSE, VolledigSchermKnop, useVolledigScherm } from "@/components/VolledigScherm";
 
 /**
  * Het whiteboard zoals de leraar het projecteert. Kaartjes verschijnen live; de leraar
@@ -38,7 +37,8 @@ export function BordLeraar({ sessie: begin, onStop }: { sessie: LiveSessie; onSt
   const [paneel, setPaneel] = useState<"toevoegen" | "instellingen" | null>(null);
   const [concept, setConcept] = useState<BordInstellingen | null>(null);
   const [groot, setGroot] = useState<string | null>(null);
-  const [vol, setVol] = useState(false);
+  // Esc sluit hier eerst het grote kaartje; daarom regelt dit scherm Esc zelf.
+  const { ref: volRef, actief: vol, wissel: wisselVol, sluit: sluitVol } = useVolledigScherm({ esc: false });
   const [toonCode, setToonCode] = useState(true);
 
   const inst = sessie.bord as BordInstellingen;
@@ -59,11 +59,11 @@ export function BordLeraar({ sessie: begin, onStop }: { sessie: LiveSessie; onSt
     const op = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (groot) setGroot(null);
-      else if (vol) setVol(false);
+      else if (vol) sluitVol();
     };
     window.addEventListener("keydown", op);
     return () => window.removeEventListener("keydown", op);
-  }, [groot, vol]);
+  }, [groot, vol, sluitVol]);
 
   const metFout = async (actie: () => Promise<void>) => {
     try {
@@ -126,13 +126,7 @@ export function BordLeraar({ sessie: begin, onStop }: { sessie: LiveSessie; onSt
   const knopRustig = `${knop} bg-white border-slate-200 text-slate-700 hover:border-merk`;
 
   return (
-    <div
-      className={
-        vol
-          ? "fixed inset-0 z-50 overflow-y-auto bg-[var(--achtergrond)] p-4 sm:p-6"
-          : "max-w-7xl mx-auto u-fade"
-      }
-    >
+    <div ref={volRef} className={vol ? VOLSCHERM_KLASSE : "max-w-7xl mx-auto u-fade"}>
       {/* Bediening: niet op het afgedrukte bord */}
       <div className="flex flex-wrap items-center gap-2 mb-4 niet-afdrukken">
         <button onClick={sluitAf} className={knopRustig}>
@@ -183,10 +177,7 @@ export function BordLeraar({ sessie: begin, onStop }: { sessie: LiveSessie; onSt
           <Printer className="w-3.5 h-3.5" />
           Afdrukken
         </button>
-        <button onClick={() => setVol((v) => !v)} className={knopRustig}>
-          {vol ? <Shrink className="w-3.5 h-3.5" /> : <Expand className="w-3.5 h-3.5" />}
-          {vol ? "Kleiner" : "Volledig scherm"}
-        </button>
+        <VolledigSchermKnop actief={vol} onClick={wisselVol} className={knopRustig} />
       </div>
 
       {fout && (

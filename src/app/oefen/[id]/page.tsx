@@ -23,6 +23,7 @@ import { Studietip } from "@/components/Studietip";
 import { useInstellingen } from "@/lib/instellingen/InstellingenProvider";
 import { Uitgeschakeld } from "@/components/FunctiePoort";
 import { GeenVerbinding, Melding } from "@/components/Melding";
+import { VOLSCHERM_KLASSE, VolledigSchermKnop, useVolledigScherm } from "@/components/VolledigScherm";
 
 export default function OefenPage() {
   const params = useParams();
@@ -35,6 +36,8 @@ export default function OefenPage() {
   const [toestand, setToestand] = useState<"laden" | "klaar" | "niet-gevonden" | "fout">("laden");
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [volgendeKeer, setVolgendeKeer] = useState<string | null>(null);
+  // De speler alleen op het scherm: rustiger oefenen, of groot op het digibord.
+  const volScherm = useVolledigScherm();
 
   useEffect(() => {
     let actief = true;
@@ -162,6 +165,12 @@ export default function OefenPage() {
               <Presentation className="w-4 h-4" />
             </Link>
           )}
+          <VolledigSchermKnop
+            actief={volScherm.actief}
+            onClick={volScherm.wissel}
+            alleenIcoon
+            className="p-2 rounded-xl text-slate-500 hover:text-merk-900 hover:bg-slate-100 transition-colors"
+          />
           {isAan("afdrukken") && (
             <Link
               href={`/afdrukken/${exercise.id}`}
@@ -182,13 +191,26 @@ export default function OefenPage() {
       </div>
 
       {/* De juiste speler voor deze werkvorm */}
-      <div className="py-4">
-        <WerkvormSpeler
-          oefening={exercise}
-          isLeraar={isLeraar}
-          onBeoordeeld={onthoud}
-          onQuizKlaar={meldQuizresultaat}
-        />
+      <div ref={volScherm.ref} className={volScherm.actief ? `${VOLSCHERM_KLASSE} flex flex-col` : "py-4"}>
+        {volScherm.actief && (
+          <div className="flex items-center justify-between gap-4 pb-3 border-b border-slate-200">
+            <p className="font-extrabold text-merk-900 line-clamp-1 min-w-0">{exercise.title}</p>
+            <VolledigSchermKnop
+              actief
+              onClick={volScherm.sluit}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border bg-white border-slate-200 text-slate-700 hover:border-merk text-xs font-bold transition-colors"
+            />
+          </div>
+        )}
+        {/* my-auto: op een groot scherm staat de speler in het midden, niet bovenaan */}
+        <div className={volScherm.actief ? "my-auto w-full py-6" : undefined}>
+          <WerkvormSpeler
+            oefening={exercise}
+            isLeraar={isLeraar}
+            onBeoordeeld={onthoud}
+            onQuizKlaar={meldQuizresultaat}
+          />
+        </div>
       </div>
 
       {/* Gespreid herhalen: alleen zinvol als er iets aan je account hangt */}

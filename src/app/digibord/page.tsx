@@ -21,6 +21,7 @@ import { LeraarPoort } from "@/components/LeraarPoort";
 import { Studietip } from "@/components/Studietip";
 import { KLASOPDRACHTEN } from "@/lib/studietips";
 import { FunctiePoort } from "@/components/FunctiePoort";
+import { VolledigSchermKnop, useVolledigScherm } from "@/components/VolledigScherm";
 
 /*
  * Eén scherm dat de hele les kan blijven staan: de lesdoelen, de opdracht van dit moment,
@@ -47,6 +48,7 @@ function DigibordPaginaInhoud() {
 
   const [inhoud, setInhoud] = useState<Bordinhoud>(LEEG);
   const [instellen, setInstellen] = useState(true);
+  const volScherm = useVolledigScherm();
   const [qr, setQr] = useState("");
 
   // Een klasopdracht zet de klok op haar tijd. De sleutel laat de klok opnieuw beginnen.
@@ -113,6 +115,12 @@ function DigibordPaginaInhoud() {
           </p>
         </div>
 
+        <div className="flex items-center gap-2 shrink-0">
+        <VolledigSchermKnop
+          actief={volScherm.actief}
+          onClick={volScherm.wissel}
+          className="px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-merk text-slate-700 font-bold text-xs transition-colors flex items-center gap-1.5"
+        />
         <button
           onClick={() => setInstellen(!instellen)}
           className="shrink-0 px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-merk text-slate-700 font-bold text-xs transition-colors flex items-center gap-1.5"
@@ -120,10 +128,26 @@ function DigibordPaginaInhoud() {
           {instellen ? <Presentation className="w-4 h-4" /> : <Settings2 className="w-4 h-4" />}
           <span>{instellen ? "Toon alleen het bord" : "Aanpassen"}</span>
         </button>
+        </div>
       </div>
 
-      {/* Het bord zelf */}
-      <div className="bg-merk-900 text-white rounded-3xl p-6 sm:p-10 shadow-lg">
+      {/* Het bord zelf. Op volledig scherm alleen het bord, over het hele scherm. */}
+      <div
+        ref={volScherm.ref}
+        className={`bg-merk-900 text-white p-6 sm:p-10 ${
+          volScherm.actief
+            ? "fixed inset-0 z-50 overflow-y-auto flex flex-col justify-center"
+            : "rounded-3xl shadow-lg"
+        }`}
+      >
+        {volScherm.actief && (
+          <VolledigSchermKnop
+            actief
+            onClick={volScherm.sluit}
+            className="absolute top-4 right-4 p-2 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+            alleenIcoon
+          />
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 min-w-0">
             {doelen.length > 0 && (

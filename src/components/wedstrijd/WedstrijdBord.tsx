@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link";
 import QRCode from "qrcode";
 import { merkTint } from "@/lib/instellingen/kleur";
+import { VOLSCHERM_KLASSE, VolledigSchermKnop, useVolledigScherm } from "@/components/VolledigScherm";
 import { ArrowRight, CheckCircle2, Shuffle, Square, Trophy, Users, X, RefreshCw } from "lucide-react";
 import { opslag, opslagGedeeld, generateShortCode } from "@/lib/opslag";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -261,6 +262,7 @@ export function WedstrijdBord({
   }, [quiz.fase, isDia, iedereen, sluitVraag]);
 
   const isLaatste = quiz.vraagNr >= vragen.length - 1;
+  const volScherm = useVolledigScherm();
   const metPodium = inst.podium !== false;
   const eindLabel = metPodium ? "Naar het podium" : "Naar het einde";
 
@@ -310,7 +312,10 @@ export function WedstrijdBord({
   );
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4 u-fade">
+    <div
+      ref={volScherm.ref}
+      className={volScherm.actief ? `${VOLSCHERM_KLASSE} space-y-4` : "max-w-5xl mx-auto space-y-4 u-fade"}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button
           onClick={sluitAf}
@@ -330,6 +335,11 @@ export function WedstrijdBord({
           {inst.reeksbonus ? "aan" : "uit"}
           {inst.teams > 0 && ` · ${inst.teams} teams`}
         </span>
+        <VolledigSchermKnop
+          actief={volScherm.actief}
+          onClick={volScherm.wissel}
+          className="text-xs font-bold text-slate-500 hover:text-merk-900 flex items-center gap-1"
+        />
       </div>
 
       {fout && (
