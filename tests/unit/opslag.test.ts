@@ -98,9 +98,83 @@ describe("materiaal", () => {
     expect(await opslag.viaCode("codea")).toEqual({ soort: "oefening", id: "a" });
     expect((await opslag.oefening("a"))?.title).toBe("Oefening a");
 
-    await opslag.verwijderOefening("a");
+    await opslag.wisOefening("a");
     expect(await opslag.oefening("a")).toBeNull();
     expect(await opslag.viaCode("CODEA")).toBeNull();
+  });
+
+  it("verwijderen zet in de prullenbak: uit elke lijst, maar terug te zetten met dezelfde code", async () => {
+    await opslag.maakOefeningen([oefening("a"), oefening("b")]);
+    await opslag.verwijderOefening("a");
+
+    expect((await opslag.zichtbareOefeningen(LERAAR)).map((ex) => ex.id)).toEqual(["b"]);
+    expect((await opslag.prullenbak(LERAAR, false)).map((ex) => ex.id)).toEqual(["a"]);
+    // De oefening en haar code bestaan nog; de oefenpagina toont dat ze weg is.
+    expect((await opslag.oefening("a"))?.verwijderdOp).toBeTruthy();
+    expect(await opslag.viaCode("codea")).toEqual({ soort: "oefening", id: "a" });
+
+    await opslag.herstelOefening("a");
+    expect((await opslag.oefening("a"))?.verwijderdOp).toBeUndefined();
+    expect((await opslag.zichtbareOefeningen(LERAAR)).map((ex) => ex.id).sort()).toEqual(["a", "b"]);
+    expect(await opslag.prullenbak(LERAAR, false)).toEqual([]);
+  });
+
+  it("de prullenbak: een collega ziet ze niet, een beheerder wel bij gedeeld materiaal, en na dertig dagen is het weg", async () => {
+    await opslag.maakOefeningen([oefening("gedeeld"), oefening("prive", { visibility: "prive" }), oefening("oud")]);
+    await opslag.verwijderOefening("gedeeld");
+    await opslag.verwijderOefening("prive");
+    await opslag.stuurInzending("oud", ["Goed"]);
+    await opslag.wijzigOefening("oud", { verwijderdOp: "2026-01-01T00:00:00.000Z" });
+
+    expect(await opslag.prullenbak(COLLEGA, false)).toEqual([]);
+    expect((await opslag.prullenbak(COLLEGA, true)).map((ex) => ex.id)).toEqual(["gedeeld"]);
+    // "oud" zat er langer dan dertig dagen in: weg, met haar code en wat ingestuurd werd.
+    expect(await opslag.oefening("oud")).toBeNull();
+    expect(await opslag.viaCode("codeoud")).toBeNull();
+    expect(await opslag.inzendingen("oud")).toEqual([]);
+    expect((await opslag.prullenbak(LERAAR, false)).map((ex) => ex.id).sort()).toEqual(["gedeeld", "prive"]);
+  });
+
+  it("bewaart bij aanpassen de vorige versie, en zet ze terug zonder de maker of de code te veranderen", async () => {
+    await opslag.maakOefeningen([oefening("a")]);
+    expect(await opslag.vorigeVersie("a")).toBeNull();
+
+    const oud = (await opslag.oefening("a"))!;
+    await opslag.vervangOefening({ ...oud, title: "Aangepast" });
+    expect((await opslag.vorigeVersie("a"))?.oefening.title).toBe("Oefening a");
+
+    // Intussen nam een collega het over: dat blijft zo, alleen de inhoud komt terug.
+    await opslag.wijzigOefening("a", { creatorId: COLLEGA.id, creatorName: COLLEGA.naam });
+    const terug = await opslag.herstelVorigeVersie("a");
+    expect(terug).toMatchObject({ title: "Oefening a", creatorId: COLLEGA.id, shareCode: "codea" });
+    expect((await opslag.vorigeVersie("a"))?.oefening.title).toBe("Aangepast");
+    expect((await opslag.zichtbareOefeningen(COLLEGA)).map((ex) => ex.title)).toEqual(["Oefening a"]);
+  });
+
+  it("wist inzendingen en quizresultaten op vraag, en mee met de oefening", async () => {
+    await opslag.maakOefeningen([oefening("a")]);
+    await opslag.stuurInzending("a", ["Goed"]);
+    await opslag.stuurInzending("a", ["Minder"]);
+    await opslag.stuurQuizresultaat("a", ["q1"], 3);
+
+    await opslag.wisInzendingen("a");
+    expect(await opslag.inzendingen("a")).toEqual([]);
+    expect(await opslag.quizresultaten("a")).toHaveLength(1);
+    await opslag.wisQuizresultaten("a");
+    expect(await opslag.quizresultaten("a")).toEqual([]);
+
+    await opslag.stuurQuizresultaat("a", [], 3);
+    await opslag.wisOefening("a");
+    expect(await opslag.quizresultaten("a")).toEqual([]);
+  });
+
+  it("houdt de lijst van beheerders bij, op adres in kleine letters", async () => {
+    await opslag.voegBeheerderToe(" Jan.Janssens@voorbeeld.school ", "sofie@voorbeeld.school");
+    expect(await opslag.beheerders()).toMatchObject([
+      { adres: "jan.janssens@voorbeeld.school", toegevoegdDoor: "sofie@voorbeeld.school" },
+    ]);
+    await opslag.verwijderBeheerder("JAN.JANSSENS@voorbeeld.school");
+    expect(await opslag.beheerders()).toEqual([]);
   });
 
   it("toont wat gedeeld is en wat van de kijker zelf is, niet het privémateriaal van een collega", async () => {
@@ -155,7 +229,7 @@ describe("materiaal", () => {
     await opslag.maakOefeningen([oefening("a")]);
     const oud = (await opslag.oefening("a"))!;
     await expect(opslag.vervangOefening({ ...oud, shareCode: "ANDERS" })).rejects.toThrow();
-    await opslag.verwijderOefening("a");
+    await opslag.wisOefening("a");
     await expect(opslag.vervangOefening(oud)).rejects.toThrow();
     expect(await opslag.oefening("a")).toBeNull();
   });
@@ -416,5 +490,34 @@ describe("het voorbeeldmateriaal van de demo", () => {
     await opServer.maakOefeningen([oefening("a")]);
     expect(await opServer.oefening("a")).toBeNull();
     expect(await opServer.zichtbareOefeningen(null)).toEqual([]);
+  });
+});
+
+describe("wat er nieuw bij kwam", () => {
+  it("ook een persoonlijke map kan in een map zitten; bij verwijderen schuiven de submappen op", async () => {
+    await opslag.maakMap(lesmap("vak"));
+    await opslag.maakMap(lesmap("les1", { bovenMapId: "vak" }));
+    await opslag.maakMap(lesmap("deel", { bovenMapId: "les1" }));
+
+    await opslag.verwijderMap("les1");
+    const mappen = await opslag.eigenMappen(LERAAR);
+    expect(mappen.map((m) => m.id).sort()).toEqual(["deel", "vak"]);
+    expect(mappen.find((m) => m.id === "deel")?.bovenMapId).toBe("vak");
+
+    await opslag.verplaatsMap("deel", null);
+    expect((await opslag.map("deel"))?.bovenMapId).toBeUndefined();
+  });
+
+  it("een leraar vindt zijn eigen sessies terug, nieuwste eerst, en haalt er een weg", async () => {
+    await opslag.startSessie(sessie({ code: "111111", gestartOp: "2026-11-01T09:00:00.000Z" }));
+    await opslag.startSessie(sessie({ code: "222222", gestartOp: "2026-11-20T09:00:00.000Z" }));
+    await opslag.startSessie(sessie({ code: "333333", hostId: COLLEGA.id }));
+    await opslag.stuurAntwoord("222222", { apparaat: "t1", optie: 1, op: "2026-11-20T09:01:00.000Z" });
+
+    expect((await opslag.eigenSessies(LERAAR.id)).map((s) => s.code)).toEqual(["222222", "111111"]);
+    expect(await opslag.antwoorden("222222")).toMatchObject([{ apparaat: "t1", optie: 1 }]);
+
+    await opslag.wisSessie("111111");
+    expect((await opslag.eigenSessies(LERAAR.id)).map((s) => s.code)).toEqual(["222222"]);
   });
 });

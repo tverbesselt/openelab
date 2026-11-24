@@ -4,13 +4,16 @@ import React, { useEffect, useState, type ComponentType } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2 } from "lucide-react";
-import { opslag } from "@/lib/opslag";
+import { ArrowLeft, CheckCircle2, History } from "lucide-react";
+import { opslag, useMateriaal } from "@/lib/opslag";
+import { useOpgehaald } from "@/lib/opgehaald";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useInstellingen } from "@/lib/instellingen/InstellingenProvider";
 import { STANDAARD_TAAL } from "@/lib/spraak";
-import type { Exercise, ExerciseType, Zichtbaarheid } from "@/lib/types";
-import { WERKVORMEN, isEigenMateriaal } from "@/lib/labels";
+import type { Exercise, ExerciseType, VorigeVersie, Zichtbaarheid } from "@/lib/types";
+import { WERKVORMEN, isEigenMateriaal, magMateriaalBeheren } from "@/lib/labels";
+import { VindbaarheidVelden } from "@/components/maken/VindbaarheidVelden";
+import { bekendeVakken, metVindbaarheid, vindbaarheidVan, type Vindbaarheid } from "@/lib/vindbaarheid";
 import { isBegrippenType } from "@/lib/begrippenBewerken";
 import { werkvormVan } from "@/werkvormen/register";
 import type { VormProps } from "@/werkvormen/soorten";
@@ -24,6 +27,9 @@ import { TaalKiezer } from "@/components/maken/TaalKiezer";
  * Materiaal aanpassen. Het formulier is hetzelfde als bij het maken, maar al ingevuld met
  * wat er nu in staat. Bewaren zet de nieuwe versie in de plaats van de oude: zelfde id,
  * zelfde code en QR-code, in dezelfde mappen. Wat cursisten al instuurden, blijft staan.
+ *
+ * De maker past zijn eigen materiaal aan; een beheerder ook wat met heel de school gedeeld
+ * is. Wat er stond, blijft één aanpassing lang bewaard als vorige versie.
  */
 
 /** Flashcards, matching en de woordentrainer pas je aan als begrippenlijst. */
@@ -36,7 +42,7 @@ function vormVoor(type: ExerciseType): ComponentType<VormProps> | null {
 
 export default function BewerkPagina() {
   const id = useParams().id as string;
-  const { status, isLeraar, gebruiker } = useAuth();
+  const { status, isLeraar, isBeheerder, gebruiker } = useAuth();
   const { isAan } = useInstellingen();
   const [oefening, setOefening] = useState<Exercise | null>(null);
   const [laden, setLaden] = useState(true);
@@ -53,6 +59,13 @@ export default function BewerkPagina() {
       actief = false;
     };
   }, [id]);
+  const { oefeningen } = useMateriaal();
+  const magBeheren = !!oefening && magMateriaalBeheren(oefening, gebruiker, isBeheerder);
+  const vorige = useOpgehaald<VorigeVersie | null>(magBeheren ? `oefening:${id}:vorige` : null, () =>
+    opslag.vorigeVersie(id)
+  );
+  // Leeg zolang de leraar niets wijzigt: dan geldt wat er nu bij de oefening staat.
+  const [vindbaarheid, setVindbaarheid] = useState<Vindbaarheid | null>(null);
 
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState("");
@@ -80,7 +93,7 @@ export default function BewerkPagina() {
     );
   }
 
-  if (!isEigenMateriaal(oefening, gebruiker)) {
+  if (!magBeheren) {
     return (
       <Melding titel="Dit materiaal is van een collega" terug={{ href: "/bibliotheek", label: "Naar de bibliotheek" }}>
         Je kan alleen je eigen materiaal aanpassen. Kopieer het in de bibliotheek naar je eigen
@@ -88,6 +101,16 @@ export default function BewerkPagina() {
       </Melding>
     );
   }
+
+  if (oefening.verwijderdOp) {
+    return (
+      <Melding titel="Dit materiaal zit in de prullenbak" terug={{ href: "/bibliotheek?toon=prullenbak", label: "Naar de prullenbak" }}>
+        Zet het eerst terug. Daarna kan je het weer aanpassen.
+      </Melding>
+    );
+  }
+
+  const vanCollega = !isEigenMateriaal(oefening, gebruiker);
 
   if (!isAan(oefening.type)) return <Uitgeschakeld />;
 
@@ -105,6 +128,22 @@ export default function BewerkPagina() {
 
   const huidigeZichtbaarheid = zichtbaarheid ?? oefening.visibility;
   const huidigeTaal = spraakTaal ?? oefening.didacticConfig.spraakTaal ?? STANDAARD_TAAL;
+  const huidigeVindbaarheid = vindbaarheid ?? vindbaarheidVan(oefening);
+
+  const zetVorigeTerug = async () => {
+    if (bezig) return;
+    if (!confirm("De vorige versie terugzetten? Wat er nu staat, wordt zelf de vorige versie.")) return;
+    setBezig(true);
+    setFout("");
+    try {
+      setBewaard(await opslag.herstelVorigeVersie(oefening.id));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {
+      setFout("Terugzetten is niet gelukt. Kijk je verbinding na en probeer opnieuw.");
+    } finally {
+      setBezig(false);
+    }
+  };
 
   const bewaar = async (nieuwe: Exercise[]) => {
     const [nieuw] = nieuwe;
@@ -114,13 +153,17 @@ export default function BewerkPagina() {
 
     // Wat bij de oefening hoort en niet in het formulier staat, blijft: de code, de maker,
     // de datum, de beschrijving, de bron van een import.
-    const aangepast = {
-      ...oefening,
-      title: nieuw.title,
-      content: nieuw.content,
-      didacticConfig: { ...oefening.didacticConfig, ...nieuw.didacticConfig },
-      visibility: huidigeZichtbaarheid,
-    } as Exercise;
+    const aangepast = metVindbaarheid(
+      {
+        ...oefening,
+        title: nieuw.title,
+        content: nieuw.content,
+        didacticConfig: { ...oefening.didacticConfig, ...nieuw.didacticConfig },
+        visibility: huidigeZichtbaarheid,
+      } as Exercise,
+      huidigeVindbaarheid,
+      true
+    );
     // Alleen het quizformulier kiest een omslagfoto; daar kan ze ook weg.
     if (oefening.type === "quiz") {
       if (nieuw.cover) aangepast.cover = nieuw.cover;
@@ -153,13 +196,20 @@ export default function BewerkPagina() {
     bewaar,
     // Aanpassen verandert niets aan de mappen: die regel je in de bibliotheek.
     bestemming: (
-      <Bestemming
-        zichtbaarheid={huidigeZichtbaarheid}
-        setZichtbaarheid={setZichtbaarheid}
-        mapId=""
-        setMapId={() => {}}
-        mappen={[]}
-      />
+      <>
+        <VindbaarheidVelden
+          waarde={huidigeVindbaarheid}
+          onWijzig={setVindbaarheid}
+          vakken={bekendeVakken(oefeningen)}
+        />
+        <Bestemming
+          zichtbaarheid={huidigeZichtbaarheid}
+          setZichtbaarheid={setZichtbaarheid}
+          mapId=""
+          setMapId={() => {}}
+          mappen={[]}
+        />
+      </>
     ),
     spraakTaal: huidigeTaal,
     setSpraakTaal,
@@ -196,6 +246,32 @@ export default function BewerkPagina() {
           QR-code blijven hetzelfde. Wie de oefening al open heeft, ziet je wijzigingen na
           opnieuw openen.
         </p>
+
+        {vanCollega && (
+          <p className="mt-3 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            Dit materiaal is van {oefening.creatorName}. Je past het aan als beheerder: het blijft
+            van je collega, en die ziet jouw wijzigingen.
+          </p>
+        )}
+
+        {vorige.data && (
+          <p className="mt-3 text-xs text-slate-700 bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <History className="w-4 h-4 shrink-0 text-slate-500" aria-hidden />
+            <span className="flex-1 min-w-0">
+              Vorige versie van{" "}
+              {new Date(vorige.data.bewaardOp).toLocaleDateString("nl-BE", { day: "numeric", month: "long", year: "numeric" })}
+              : &ldquo;{vorige.data.oefening.title}&rdquo;.
+            </span>
+            <button
+              type="button"
+              onClick={zetVorigeTerug}
+              disabled={bezig}
+              className="font-bold text-merk-900 hover:underline disabled:opacity-50"
+            >
+              Vorige versie terugzetten
+            </button>
+          </p>
+        )}
       </div>
 
       <Vorm {...vormProps} />

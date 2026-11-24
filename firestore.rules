@@ -28,9 +28,11 @@ service cloud.firestore {
         : '';
     }
 
-    // Beheerders stellen de app in en ordenen het gedeelde materiaal in organisatiemappen.
-    // Wie beheerder is, staat in beheerders/{e-mail}; die lijst wijzig je alleen in de
-    // Firebase-console. Zo kan niemand zichzelf beheerder maken.
+    // Beheerders stellen de app in, ordenen het gedeelde materiaal in organisatiemappen en
+    // houden het netjes: ze kunnen gedeeld materiaal van een collega verbeteren, uit de
+    // bibliotheek halen, overnemen of verwijderen. Wie beheerder is, staat in
+    // beheerders/{e-mail}. De eerste zet je in de Firebase-console; daarna voegt een
+    // beheerder in Beheer collega's toe. Niemand maakt zichzelf beheerder.
     function isBeheerder() {
       return email() != ''
         && exists(/databases/$(database)/documents/beheerders/$(email()));
@@ -67,11 +69,21 @@ service cloud.firestore {
       return waarde is string && waarde.size() <= max;
     }
 
-    function geldigMateriaal(data) {
-      return data.creatorId == request.auth.uid
-        && tekst(data.title, 200)
+    // Wat elke oefening moet hebben, wie ze ook schrijft.
+    function geldigeVelden(data) {
+      return tekst(data.title, 200)
         && data.visibility in ['prive', 'organisatie']
-        && tekst(data.shareCode, 12);
+        && tekst(data.shareCode, 12)
+        && (!('vak' in data) || tekst(data.vak, 80))
+        && (!('verwijderdOp' in data) || tekst(data.verwijderdOp, 40));
+    }
+    function geldigMateriaal(data) {
+      return data.creatorId == request.auth.uid && geldigeVelden(data);
+    }
+    // Materiaal dat met heel de school gedeeld is, beheert ook een beheerder. Privé
+    // materiaal van een collega blijft van die collega alleen.
+    function beheertGedeeld(data) {
+      return data.visibility == 'organisatie' && isBeheerder();
     }
 
     /* ── Oefeningen ──────────────────────────────────────────────────────── */
@@ -83,29 +95,45 @@ service cloud.firestore {
       allow list: if resource.data.visibility == 'organisatie' || isEigenaar(resource.data);
 
       allow create: if isLeraar() && geldigMateriaal(request.resource.data);
-      allow update: if isLeraar() && isEigenaar(resource.data)
-        && request.resource.data.creatorId == resource.data.creatorId
-        && geldigMateriaal(request.resource.data);
-      allow delete: if isLeraar() && isEigenaar(resource.data);
+      // De maker past zijn eigen materiaal aan. Een beheerder past gedeeld materiaal aan en
+      // kan het overnemen: dan wordt hij de maker, bijvoorbeeld als een collega vertrok.
+      allow update: if isLeraar()
+        && geldigeVelden(request.resource.data)
+        && (isEigenaar(resource.data)
+            ? request.resource.data.creatorId == resource.data.creatorId
+            : beheertGedeeld(resource.data)
+              && request.resource.data.creatorId in [resource.data.creatorId, request.auth.uid]);
+      allow delete: if isLeraar() && (isEigenaar(resource.data) || beheertGedeeld(resource.data));
 
       function maker() {
         return get(/databases/$(database)/documents/oefeningen/$(id)).data;
       }
 
-      // Exit tickets: iedereen mag er één insturen, alleen de maker leest ze.
+      // Wie de oefening beheert: de maker, of een beheerder bij gedeeld materiaal.
+      function beheertOefening() {
+        return isLeraar() && (isEigenaar(maker()) || beheertGedeeld(maker()));
+      }
+
+      // De vorige versie van een aangepaste oefening, om een vergissing terug te draaien.
+      match /versies/{versieId} {
+        allow read, write: if versieId == 'vorige' && beheertOefening();
+      }
+
+      // Exit tickets: iedereen mag er één insturen, alleen wie de oefening beheert leest ze
+      // en kan ze wissen, bijvoorbeeld bij de start van een nieuwe groep.
       match /inzendingen/{inzendingId} {
-        allow read: if isEigenaar(maker());
+        allow read, delete: if beheertOefening();
         allow create: if request.resource.data.keys().hasOnly(['antwoorden', 'op'])
           && request.resource.data.antwoorden is list
           && request.resource.data.antwoorden.size() <= 10
           && tekst(request.resource.data.op, 40);
-        allow update, delete: if false;
+        allow update: if false;
       }
 
       // Quizresultaten: welke vragen fout gingen, zonder wie het was. Zo ziet de leraar
       // waar de klas struikelt, en blijft oefenen vrij van beoordeling.
       match /resultaten/{resultaatId} {
-        allow read: if isEigenaar(maker());
+        allow read, delete: if beheertOefening();
         allow create: if request.resource.data.keys().hasOnly(['foutVragen', 'aantalVragen', 'op'])
           && request.resource.data.foutVragen is list
           && request.resource.data.foutVragen.size() <= 100
@@ -113,7 +141,7 @@ service cloud.firestore {
           && request.resource.data.aantalVragen > 0
           && request.resource.data.aantalVragen <= 100
           && tekst(request.resource.data.op, 40);
-        allow update, delete: if false;
+        allow update: if false;
       }
     }
 
@@ -122,7 +150,8 @@ service cloud.firestore {
     // Een map is persoonlijk, of van de organisatie. Een persoonlijke map is van de leraar
     // die ze maakte. Een organisatiemap ziet elke leraar; elke beheerder kan ze wijzigen,
     // ook als een andere beheerder ze aanmaakte. Een map verandert nooit van soort.
-    // Organisatiemappen kunnen in elkaar zitten (bovenMapId); persoonlijke mappen niet.
+    // Mappen kunnen in elkaar zitten (bovenMapId): een organisatiemap in een organisatiemap,
+    // een persoonlijke map in een eigen persoonlijke map.
     match /mappen/{id} {
       function bovenMapId(data) {
         return data.get('bovenMapId', null);
@@ -132,15 +161,16 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/mappen/$(bovenMapId(data))).data;
       }
 
-      // Een submap staat altijd in een bestaande organisatiemap, nooit in zichzelf, en
-      // ook niet in haar eigen submap. Diepere kringen houdt de app tegen.
+      // Een submap staat altijd in een bestaande map van dezelfde soort, nooit in zichzelf,
+      // en ook niet in haar eigen submap. Een persoonlijke map alleen in een eigen map.
+      // Diepere kringen houdt de app tegen.
       function geldigeBovenmap(data) {
         return bovenMapId(data) == null
-          || (isOrganisatiemap(data)
-            && bovenMapId(data) is string
+          || (bovenMapId(data) is string
             && bovenMapId(data) != id
             && exists(/databases/$(database)/documents/mappen/$(bovenMapId(data)))
-            && isOrganisatiemap(bovenmap(data))
+            && isOrganisatiemap(bovenmap(data)) == isOrganisatiemap(data)
+            && (isOrganisatiemap(data) || isEigenaar(bovenmap(data)))
             && bovenMapId(bovenmap(data)) != id);
       }
 
@@ -170,11 +200,22 @@ service cloud.firestore {
         && (isOrganisatiemap(resource.data) ? isBeheerder() : isEigenaar(resource.data));
     }
 
-    /* ── Beheerders: alleen je eigen vermelding lezen, nooit schrijven ───── */
+    /* ── Beheerders: je eigen vermelding lezen; een beheerder beheert de lijst ── */
 
+    // Een beheerder voegt een collega toe of haalt hem weg, maar nooit zichzelf: zo blijft
+    // er altijd minstens één beheerder over.
     match /beheerders/{adres} {
-      allow get: if email() != '' && adres == email();
-      allow list, write: if false;
+      allow get: if email() != '' && (adres == email() || isBeheerder());
+      allow list: if isBeheerder();
+      // Het adres is de sleutel, in kleine letters: zo vindt de regel isBeheerder() het terug.
+      allow create: if isBeheerder()
+        && adres == adres.lower()
+        && adres.matches('^[^@/ ]+@[^@/ ]+[.][^@/ ]+$')
+        && request.resource.data.keys().hasOnly(['toegevoegdDoor', 'op'])
+        && tekst(request.resource.data.toegevoegdDoor, 100)
+        && tekst(request.resource.data.op, 40);
+      allow update: if false;
+      allow delete: if isBeheerder() && adres != email();
     }
 
     /* ── Instellingen: iedereen leest, alleen een beheerder schrijft ─────── */
@@ -233,9 +274,9 @@ service cloud.firestore {
         && (!isOrganisatiemap(request.resource.data)
             || (request.resource.data.soort == 'map' && isBeheerder()));
       allow update: if false;
-      // De code van een organisatiemap ruimt elke beheerder op, niet alleen wie ze maakte.
-      allow delete: if isLeraar()
-        && (isEigenaar(resource.data) || (isOrganisatiemap(resource.data) && isBeheerder()));
+      // Een beheerder ruimt ook de code op van een organisatiemap of van gedeeld materiaal
+      // dat hij verwijdert, niet alleen wie ze maakte.
+      allow delete: if isLeraar() && (isEigenaar(resource.data) || isBeheerder());
     }
 
     /* ── Live-sessies ────────────────────────────────────────────────────── */
@@ -243,7 +284,8 @@ service cloud.firestore {
     match /sessies/{code} {
       // Cursisten volgen de sessie via de pincode; die kennen ze van het digibord.
       allow get: if true;
-      allow list: if false;
+      // Een leraar vindt zijn eigen sessies van de voorbije weken terug.
+      allow list: if isLeraar() && resource.data.hostId == request.auth.uid;
       allow create: if isLeraar()
         && request.resource.data.hostId == request.auth.uid
         && request.resource.data.type in ['poll', 'wordcloud', 'snellevraag', 'begripsmeter', 'quiz', 'bord', 'tekenen']

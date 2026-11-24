@@ -15,7 +15,7 @@ import {
 import { opslag } from "@/lib/opslag";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { Exercise, Herhaling } from "@/lib/types";
-import { WERKVORMEN, inhoudSamenvatting, isEigenMateriaal, isKlassikaal } from "@/lib/labels";
+import { WERKVORMEN, inhoudSamenvatting, isKlassikaal, magMateriaalBeheren } from "@/lib/labels";
 import { kanAanpassen, klassikaleStart } from "@/werkvormen/register";
 import { plan, sleutel, datumInWoorden, type Zelfoordeel } from "@/lib/herhalen";
 import { WerkvormLeraar, WerkvormSpeler } from "@/werkvormen/Weergave";
@@ -30,7 +30,7 @@ export default function OefenPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
-  const { gebruiker, isLeraar } = useAuth();
+  const { gebruiker, isLeraar, isBeheerder } = useAuth();
   const { isAan } = useInstellingen();
 
   const [exercise, setExercise] = useState<Exercise | null>(null);
@@ -110,10 +110,24 @@ export default function OefenPage() {
     );
   }
 
+  // De maker, of een beheerder bij gedeeld materiaal: zij passen aan en zien wat er instuurde.
+  const isEigenaar = isLeraar && magMateriaalBeheren(exercise, gebruiker, isBeheerder);
+
+  if (exercise.verwijderdOp) {
+    return isEigenaar ? (
+      <Melding titel="Deze oefening zit in de prullenbak" terug={{ href: "/bibliotheek?toon=prullenbak", label: "Naar de prullenbak" }}>
+        Cursisten kunnen ze nu niet openen. Zet ze terug in de prullenbak van je bibliotheek; de
+        code blijft dezelfde.
+      </Melding>
+    ) : (
+      <Melding titel="Deze oefening bestaat niet meer">
+        Je leraar heeft ze weggehaald. Vraag om een nieuwe code.
+      </Melding>
+    );
+  }
+
   // Bestaand materiaal van een werkvorm die uit staat, blijft bewaard maar opent niet.
   if (!isAan(exercise.type)) return <Uitgeschakeld />;
-
-  const isEigenaar = isLeraar && isEigenMateriaal(exercise, gebruiker);
   // Een werkvorm voor cursisten die ook klassikaal kan: de leraar krijgt er een knop voor.
   const start = klassikaleStart(exercise);
   const speelKlassikaal =

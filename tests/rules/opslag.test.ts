@@ -6,6 +6,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { RulesTestEnvironment } from "@firebase/rules-unit-testing";
+import { doc, getDoc } from "firebase/firestore";
 import { maakOpslag } from "../../src/lib/opslag/opslag";
 import { maakFirestoreDatabank } from "../../src/lib/opslag/firestore";
 import type { Opslag } from "../../src/lib/opslag/types";
@@ -16,6 +17,7 @@ import {
   maakBeheerder,
   maakOmgeving,
   maakToegang,
+  metRegelsUit,
   NU,
   oefening,
   PNG_DATA_URL,
@@ -84,9 +86,92 @@ describe("materiaal", () => {
     await leraar.wijzigOefening("a", { title: "Hoofdsteden van Europa" });
     expect((await leraar.oefening("a"))?.title).toBe("Hoofdsteden van Europa");
 
+    // Naar de prullenbak: uit de lijsten, terug te zetten, en daarna voorgoed weg.
     await leraar.verwijderOefening("a");
-    expect(await cursist.viaCode("OEFA")).toBeNull();
     expect((await leraar.zichtbareOefeningen(LERAAR)).map((ex) => ex.id)).toEqual(["b"]);
+    expect((await leraar.prullenbak(LERAAR, false)).map((ex) => ex.id)).toEqual(["a"]);
+    await leraar.herstelOefening("a");
+    expect((await leraar.zichtbareOefeningen(LERAAR)).map((ex) => ex.id).sort()).toEqual(["a", "b"]);
+
+    await cursist.stuurInzending("a", ["Goed"]);
+    await leraar.wisOefening("a");
+    expect(await cursist.viaCode("OEFA")).toBeNull();
+    expect(await cursist.oefening("a")).toBeNull();
+    expect((await leraar.zichtbareOefeningen(LERAAR)).map((ex) => ex.id)).toEqual(["b"]);
+  });
+
+  it("een beheerder verbetert, neemt over en verwijdert gedeeld materiaal van een collega", async () => {
+    await maakBeheerder(omgeving);
+    const leraar = als("leraar");
+    await leraar.maakOefeningen([eenOefening("a"), eenOefening("p", { visibility: "prive" })]);
+    await als("anoniem").stuurInzending("a", ["Goed"]);
+    const beheerder = als("beheerder");
+
+    // Aanpassen met het formulier: de vorige versie blijft bewaard.
+    const oud = (await beheerder.oefening("a"))!;
+    await beheerder.vervangOefening({ ...oud, title: "Verbeterd", vak: "Aardrijkskunde" } as Exercise);
+    expect((await leraar.oefening("a"))?.title).toBe("Verbeterd");
+    expect((await leraar.vorigeVersie("a"))?.oefening.title).toBe("Hoofdsteden");
+    await beheerder.herstelVorigeVersie("a");
+    expect((await leraar.oefening("a"))?.title).toBe("Hoofdsteden");
+
+    // Privé materiaal blijft van de maker.
+    await expect(beheerder.wijzigOefening("p", { title: "Gekaapt" })).rejects.toThrow();
+    await expect(beheerder.verwijderOefening("p")).rejects.toThrow();
+
+    // Overnemen: de beheerder wordt de maker en ziet wat er instuurde.
+    await beheerder.wijzigOefening("a", { creatorId: BEHEERDER.id, creatorName: BEHEERDER.naam });
+    expect(await beheerder.inzendingen("a")).toHaveLength(1);
+    await expect(leraar.inzendingen("a")).rejects.toThrow();
+
+    await beheerder.verwijderOefening("a");
+    expect((await beheerder.prullenbak(BEHEERDER, true)).map((ex) => ex.id)).toEqual(["a"]);
+    await beheerder.wisOefening("a");
+    expect(await als("anoniem").viaCode("OEFA")).toBeNull();
+  });
+
+  it("een beheerder haalt gedeeld materiaal van een collega weg zonder het over te nemen", async () => {
+    await maakBeheerder(omgeving);
+    const leraar = als("leraar");
+    await leraar.maakOefeningen([eenOefening("a")]);
+    await als("anoniem").stuurQuizresultaat("a", ["q1"], 2);
+    const beheerder = als("beheerder");
+
+    await beheerder.verwijderOefening("a");
+    // De maker vindt het terug in zijn eigen prullenbak; een collega niet.
+    expect((await leraar.prullenbak(LERAAR, false)).map((ex) => ex.id)).toEqual(["a"]);
+    expect(await als("collega").prullenbak({ id: UID.collega, naam: "Jan" }, false)).toEqual([]);
+    await beheerder.wisOefening("a");
+    expect(await leraar.oefening("a")).toBeNull();
+    expect(await als("anoniem").viaCode("OEFA")).toBeNull();
+  });
+
+  it("de maker wist wat cursisten instuurden", async () => {
+    const leraar = als("leraar");
+    await leraar.maakOefeningen([eenOefening("a")]);
+    const cursist = als("anoniem");
+    await cursist.stuurInzending("a", ["Goed"]);
+    await cursist.stuurQuizresultaat("a", ["q1"], 5);
+
+    await expect(als("collega").wisInzendingen("a")).rejects.toThrow();
+    await leraar.wisInzendingen("a");
+    await leraar.wisQuizresultaten("a");
+    expect(await leraar.inzendingen("a")).toEqual([]);
+    expect(await leraar.quizresultaten("a")).toEqual([]);
+  });
+
+  it("een beheerder houdt de lijst van beheerders bij", async () => {
+    await maakBeheerder(omgeving);
+    const beheerder = als("beheerder");
+    await beheerder.voegBeheerderToe("collega@voorbeeld.school", "beheerder@voorbeeld.school");
+    expect((await beheerder.beheerders()).map((b) => b.adres)).toEqual([
+      "beheerder@voorbeeld.school",
+      "collega@voorbeeld.school",
+    ]);
+    await expect(als("leraar").beheerders()).rejects.toThrow();
+    await expect(als("leraar").voegBeheerderToe("leraar@voorbeeld.school", "leraar@voorbeeld.school")).rejects.toThrow();
+    await beheerder.verwijderBeheerder("collega@voorbeeld.school");
+    expect(await beheerder.beheerders()).toHaveLength(1);
   });
 
   it("de maker past een oefening aan met dezelfde code; een collega kan dat niet", async () => {
@@ -134,6 +219,18 @@ describe("materiaal", () => {
 });
 
 describe("mappen", () => {
+  it("een persoonlijke map in een eigen map; bij verwijderen schuift de submap op", async () => {
+    const leraar = als("leraar");
+    await leraar.maakMap(eenMap("vak"));
+    await leraar.maakMap(eenMap("les", { bovenMapId: "vak" }));
+    await leraar.maakMap(eenMap("deel", { bovenMapId: "les" }));
+
+    await leraar.verwijderMap("les");
+    expect((await leraar.map("deel"))?.bovenMapId).toBe("vak");
+    await leraar.verplaatsMap("deel", null);
+    expect((await leraar.map("deel"))?.bovenMapId).toBeUndefined();
+  });
+
   it("een leraar beheert zijn eigen mappen en verplaatst een oefening", async () => {
     const leraar = als("leraar");
     await leraar.maakMap(eenMap("van", { exerciseIds: ["x", "y"] }));
@@ -175,6 +272,24 @@ describe("mappen", () => {
 });
 
 describe("live in de klas", () => {
+  it("een leraar vindt zijn sessies terug en haalt er een weg, met wat erin zat", async () => {
+    const leraar = als("leraar");
+    await leraar.startSessie(eenSessie({ type: "bord", bord: STANDAARD_BORD }));
+    await leraar.startSessie(eenSessie({ code: "654321", gestartOp: "2026-10-10T10:00:00.000Z" }));
+    const kaartje = { id: "k1", apparaat: "t1", soort: "tekst", tekst: "Hallo", status: "zichtbaar", op: NU } as unknown as BordItem;
+    await als("anoniem").stuurBordItem(CODE, kaartje);
+
+    expect((await leraar.eigenSessies(UID.leraar)).map((s) => s.code)).toEqual(["654321", CODE]);
+    await expect(als("collega").eigenSessies(UID.leraar)).rejects.toThrow();
+
+    await expect(als("collega").wisSessie(CODE)).rejects.toThrow();
+    await leraar.wisSessie(CODE);
+    expect((await leraar.eigenSessies(UID.leraar)).map((s) => s.code)).toEqual(["654321"]);
+    await metRegelsUit(omgeving, async (d) => {
+      expect((await getDoc(doc(d, `sessies/${CODE}/bord/k1`))).exists()).toBe(false);
+    });
+  });
+
   it("een stemming: het bord volgt, een toestel stemt één keer", async () => {
     const leraar = als("leraar");
     await leraar.startSessie(eenSessie());

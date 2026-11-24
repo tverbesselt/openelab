@@ -22,6 +22,7 @@ import { BEGRIPSMETER_OPTIES, LETTERS, nieuweSessie, vraagVan } from "@/componen
 import { MateriaalOpzet, MateriaalSectie, SnelStartKnop } from "@/components/live/Keuzes";
 import { SnelleVraagOpzet } from "@/components/live/SnelleVraagOpzet";
 import { Projectiescherm } from "@/components/live/Projectiescherm";
+import { EerdereSessies } from "@/components/live/EerdereSessies";
 
 /*
  * De livepagina kiest wat er start en houdt bij welke sessie loopt. Elk sessietype heeft
@@ -161,6 +162,21 @@ function LiveInhoud() {
         },
       })
     );
+  };
+
+  /** Een sessie van eerder opnieuw op het bord, om het resultaat te tonen of te bewaren. */
+  const heropen = async (eerder: LiveSessie) => {
+    setFout("");
+    if (eerder.type === "tekenen") {
+      // De tekeningen horen bij de reeks: zonder de reeks valt er niets te vergelijken.
+      const ex = eerder.oefeningId ? await opslag.oefening(eerder.oefeningId).catch(() => null) : null;
+      if (ex?.type !== "tekenen") {
+        setFout("De reeks van deze sessie bestaat niet meer.");
+        return;
+      }
+      setTekenReeks(ex);
+    }
+    setSessie(eerder);
   };
 
   const startBegripsmeter = () => {
@@ -384,6 +400,8 @@ function LiveInhoud() {
             }}
             onKies={setGekozen}
           />
+
+          {gebruiker && <EerdereSessies hostId={gebruiker.id} onOpen={heropen} />}
         </>
       )}
     </div>

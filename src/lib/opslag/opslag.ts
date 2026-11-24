@@ -1,4 +1,5 @@
 import type {
+  Beheerder,
   BordItem,
   Exercise,
   Herhaling,
@@ -8,6 +9,7 @@ import type {
   LiveSessie,
   Tekening,
   Quizresultaat,
+  VorigeVersie,
   WedstrijdAntwoord,
   WedstrijdSpeler,
 } from "@/lib/types";
@@ -24,8 +26,9 @@ import type { Opslag, CodeDoel } from "./types";
  *   oefeningen/{id}                 het materiaal zelf
  *   oefeningen/{id}/inzendingen/{id} exit tickets, alleen leesbaar voor de maker
  *   oefeningen/{id}/resultaten/{id} anonieme quizresultaten, alleen voor de maker
+ *   oefeningen/{id}/versies/vorige  de oefening van vóór de laatste aanpassing
  *   mappen/{id}                     lesmappen, persoonlijk of van de organisatie
- *   beheerders/{e-mail}             wie organisatiemappen beheert (alleen via de console)
+ *   beheerders/{e-mail}             wie mee beheert (Beheer > Beheerders)
  *   codes/{CODE}                    code van zes tekens -> oefening of map
  *   sessies/{pincode}               een live-sessie op het digibord
  *   sessies/{pincode}/antwoorden/{apparaat}  één antwoord per toestel
@@ -44,6 +47,17 @@ const MAPPEN = "mappen";
 const CODES = "codes";
 const SESSIES = "sessies";
 const HERHALINGEN = "herhalingen";
+const BEHEERDERS = "beheerders";
+
+/** Hoe lang verwijderd materiaal in de prullenbak blijft voor het voorgoed verdwijnt. */
+export const PRULLENBAK_DAGEN = 30;
+
+/** Firestore schrijft hoogstens 500 documenten in één beweging; we blijven er ruim onder. */
+const PER_KEER = 400;
+
+function isVerlopen(verwijderdOp: string, nu = Date.now()): boolean {
+  return nu - new Date(verwijderdOp).getTime() > PRULLENBAK_DAGEN * 24 * 60 * 60 * 1000;
+}
 
 interface CodeDocument {
   soort: "oefening" | "map";
@@ -71,6 +85,34 @@ export function maakOpslag(db: Databank): Opslag {
   const gegevens = async <T>(verzameling: string, waar?: Waar[]) =>
     (await db.lijst<T>(verzameling, waar)).map((document) => document.data);
 
+  /** Wis een hele deelverzameling, in stukken die Firestore in één keer aankan. */
+  const wisAlles = async (verzameling: string) => {
+    const lijst = await db.lijst<object>(verzameling);
+    for (let i = 0; i < lijst.length; i += PER_KEER) {
+      await db.schrijf(
+        ...lijst.slice(i, i + PER_KEER).map(({ id }): Schrijfactie => ({ soort: "wis", pad: `${verzameling}/${id}` }))
+      );
+    }
+  };
+
+  /** Hetzelfde, maar wie de verzameling niet mag lezen, laat ze gewoon staan. */
+  const wisAllesAlsHetMag = (verzameling: string) => wisAlles(verzameling).catch(() => {});
+
+  const wisOefening = async (id: string) => {
+    const pad = `${OEFENINGEN}/${id}`;
+    const bestaand = await db.lees<Exercise>(pad);
+    // Eerst wat eronder hangt: zodra de oefening weg is, weten de regels niet meer van wie
+    // het was.
+    await Promise.all([
+      wisAllesAlsHetMag(`${pad}/inzendingen`),
+      wisAllesAlsHetMag(`${pad}/resultaten`),
+      wisAllesAlsHetMag(`${pad}/versies`),
+    ]);
+    const acties: Schrijfactie[] = [{ soort: "wis", pad }];
+    if (bestaand?.shareCode) acties.push({ soort: "wis", pad: codePad(bestaand.shareCode) });
+    await db.schrijf(...acties);
+  };
+
   return {
     /* Materiaal */
 
@@ -85,7 +127,8 @@ export function maakOpslag(db: Databank): Opslag {
       for (const lijst of resultaten) {
         for (const ex of lijst) perId.set(ex.id, ex);
       }
-      return nieuwsteEerst([...perId.values()]);
+      // Wat in de prullenbak zit, staat in geen enkele lijst.
+      return nieuwsteEerst([...perId.values()].filter((ex) => !ex.verwijderdOp));
     },
 
     async oefening(id) {
@@ -116,15 +159,75 @@ export function maakOpslag(db: Databank): Opslag {
       if (!bestaand) throw new Error("Deze oefening bestaat niet meer.");
       // De code hoort bij de oefening; een aanpassing mag ze niet loskoppelen.
       if (bestaand.shareCode !== oefening.shareCode) throw new Error("De code van een oefening verandert niet.");
-      await db.schrijf({ soort: "zet", pad, data: oefening });
+      const vorige: VorigeVersie = { oefening: { ...bestaand, id: oefening.id }, bewaardOp: new Date().toISOString() };
+      await db.schrijf(
+        // Wat er stond, blijft één aanpassing lang bewaard: zo is een vergissing terug te draaien.
+        { soort: "zet", pad: `${pad}/versies/vorige`, data: vorige },
+        { soort: "zet", pad, data: oefening }
+      );
+    },
+
+    async vorigeVersie(id) {
+      const versie = await db.lees<VorigeVersie>(`${OEFENINGEN}/${id}/versies/vorige`).catch(() => null);
+      return versie ? { ...versie, oefening: alsOefening({ id, data: versie.oefening }) } : null;
+    },
+
+    async herstelVorigeVersie(id) {
+      const pad = `${OEFENINGEN}/${id}`;
+      const [nu, versie] = await Promise.all([
+        db.lees<Exercise>(pad),
+        db.lees<VorigeVersie>(`${pad}/versies/vorige`),
+      ]);
+      if (!nu || !versie) throw new Error("Er is geen vorige versie.");
+      // De inhoud komt terug; van wie het is, wie het ziet en de code blijven zoals nu.
+      const terug = {
+        ...versie.oefening,
+        id,
+        creatorId: nu.creatorId,
+        creatorName: nu.creatorName,
+        visibility: nu.visibility,
+        shareCode: nu.shareCode,
+      } as Exercise;
+      const vorige: VorigeVersie = { oefening: { ...nu, id }, bewaardOp: new Date().toISOString() };
+      await db.schrijf(
+        { soort: "zet", pad: `${pad}/versies/vorige`, data: vorige },
+        { soort: "zet", pad, data: terug }
+      );
+      return alsOefening({ id, data: terug });
     },
 
     async verwijderOefening(id) {
       const pad = `${OEFENINGEN}/${id}`;
       const bestaand = await db.lees<Exercise>(pad);
-      const acties: Schrijfactie[] = [{ soort: "wis", pad }];
-      if (bestaand?.shareCode) acties.push({ soort: "wis", pad: codePad(bestaand.shareCode) });
-      await db.schrijf(...acties);
+      if (!bestaand) return;
+      await db.schrijf({ soort: "wijzig", pad, data: { verwijderdOp: new Date().toISOString() } });
+    },
+
+    async herstelOefening(id) {
+      const pad = `${OEFENINGEN}/${id}`;
+      const bestaand = await db.lees<Exercise>(pad);
+      if (!bestaand) throw new Error("Deze oefening bestaat niet meer.");
+      await db.schrijf({ soort: "wijzig", pad, weg: ["verwijderdOp"] });
+    },
+
+    wisOefening,
+
+    async prullenbak(kijker, alsBeheerder) {
+      if (!kijker?.id) return [];
+      const resultaten = await Promise.all([
+        oefeningen([["creatorId", kijker.id]]),
+        alsBeheerder ? oefeningen([["visibility", "organisatie"]]) : Promise.resolve([]),
+      ]);
+      const perId = new Map<string, Exercise>();
+      for (const lijst of resultaten) {
+        for (const ex of lijst) if (ex.verwijderdOp) perId.set(ex.id, ex);
+      }
+      const blijft: Exercise[] = [];
+      for (const ex of perId.values()) {
+        if (isVerlopen(ex.verwijderdOp!)) await wisOefening(ex.id).catch(() => {});
+        else blijft.push(ex);
+      }
+      return blijft.sort((a, b) => b.verwijderdOp!.localeCompare(a.verwijderdOp!));
     },
 
     /* Mappen */
@@ -181,11 +284,12 @@ export function maakOpslag(db: Databank): Opslag {
       const map = await db.lees<Lesmap>(pad);
       const acties: Schrijfactie[] = [{ soort: "wis", pad }];
       if (map?.shareCode) acties.push({ soort: "wis", pad: codePad(map.shareCode) });
-      if (map?.organisatie) {
+      if (map && (map.organisatie || map.creatorId)) {
         // De submappen schuiven mee in dezelfde beweging: lukt het verwijderen niet, dan
-        // blijven ook zij staan waar ze stonden.
+        // blijven ook zij staan waar ze stonden. De eerste voorwaarde is wat de regels van
+        // een lijst vragen: organisatiemappen, of de eigen mappen.
         const kinderen = await db.lijst<Lesmap>(MAPPEN, [
-          ["organisatie", true],
+          map.organisatie ? ["organisatie", true] : ["creatorId", map.creatorId!],
           ["bovenMapId", id],
         ]);
         for (const kind of kinderen) {
@@ -225,6 +329,25 @@ export function maakOpslag(db: Databank): Opslag {
 
     volgSessie(code, bij) {
       return db.volg<LiveSessie>(`${SESSIES}/${code}`, bij);
+    },
+
+    async eigenSessies(hostId) {
+      const lijst = await gegevens<LiveSessie>(SESSIES, [["hostId", hostId]]);
+      return lijst.sort((a, b) => b.gestartOp.localeCompare(a.gestartOp));
+    },
+
+    async wisSessie(code) {
+      const pad = `${SESSIES}/${code}`;
+      // Antwoorden kan niemand wissen (één stem blijft één stem); die verdwijnen met hun
+      // vervaldatum. De rest ruimt de host zelf op.
+      await Promise.all(
+        ["spelers", "bord", "tekeningen"].map((deel) => wisAllesAlsHetMag(`${pad}/${deel}`))
+      );
+      await db.schrijf({ soort: "wis", pad });
+    },
+
+    async antwoorden(code) {
+      return gegevens<LiveAntwoord>(`${SESSIES}/${code}/antwoorden`);
     },
 
     volgAntwoorden(code, bij) {
@@ -354,6 +477,10 @@ export function maakOpslag(db: Databank): Opslag {
         .sort((a, b) => b.op.localeCompare(a.op));
     },
 
+    async wisInzendingen(oefeningId) {
+      await wisAlles(`${OEFENINGEN}/${oefeningId}/inzendingen`);
+    },
+
     /* Quizresultaten */
 
     async stuurQuizresultaat(oefeningId, foutVragen, aantalVragen) {
@@ -369,6 +496,31 @@ export function maakOpslag(db: Databank): Opslag {
       return lijst
         .map(({ id, data }): Quizresultaat => ({ id, ...data }))
         .sort((a, b) => b.op.localeCompare(a.op));
+    },
+
+    async wisQuizresultaten(oefeningId) {
+      await wisAlles(`${OEFENINGEN}/${oefeningId}/resultaten`);
+    },
+
+    /* Beheerders */
+
+    async beheerders() {
+      const lijst = await db.lijst<Omit<Beheerder, "adres">>(BEHEERDERS);
+      return lijst
+        .map(({ id, data }): Beheerder => ({ ...data, adres: id }))
+        .sort((a, b) => a.adres.localeCompare(b.adres));
+    },
+
+    async voegBeheerderToe(adres, door) {
+      await db.schrijf({
+        soort: "maak",
+        pad: `${BEHEERDERS}/${adres.trim().toLowerCase()}`,
+        data: { toegevoegdDoor: door, op: new Date().toISOString() },
+      });
+    },
+
+    async verwijderBeheerder(adres) {
+      await db.schrijf({ soort: "wis", pad: `${BEHEERDERS}/${adres.trim().toLowerCase()}` });
     },
 
     /* Gespreid herhalen */

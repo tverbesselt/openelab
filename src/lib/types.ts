@@ -305,7 +305,15 @@ export interface OefeningBasis {
   bron?: string;
   didacticConfig: DidacticConfig;
   createdAt: string;
+  /** Trefwoorden: de werkvorm zet er een paar, de leraar vult aan. */
   tags: string[];
+  /** Het vak of de opleiding, zoals de leraar het noemt (bv. "NT2 richtgraad 1"). */
+  vak?: string;
+  /**
+   * Wanneer dit in de prullenbak belandde. Leeg = gewoon in gebruik. Na dertig dagen
+   * verdwijnt het voorgoed (zie PRULLENBAK_DAGEN in de opslag).
+   */
+  verwijderdOp?: string;
 }
 
 /** Een oefening van één bepaalde werkvorm, bijvoorbeeld `OefeningVan<"quiz">`. */
@@ -579,6 +587,25 @@ export interface LiveAntwoord {
   /** Ingetypt woord (woordwolk). */
   woord?: string;
   op: string;
+}
+
+/** Iemand die de app mee beheert. Het e-mailadres is de sleutel. */
+export interface Beheerder {
+  adres: string;
+  toegevoegdDoor?: string;
+  op?: string;
+}
+
+/**
+ * Een oefening zoals ze in een lijst staat. Hier is dat de oefening zelf: de lijsten halen
+ * het materiaal volledig op.
+ */
+export type OefeningKort = Exercise;
+
+/** De vorige versie van een aangepaste oefening, met wanneer ze vervangen werd. */
+export interface VorigeVersie {
+  oefening: Exercise;
+  bewaardOp: string;
 }
 
 /** Wat een cursist instuurt bij een exit ticket. Anoniem, alleen voor de maker leesbaar. */

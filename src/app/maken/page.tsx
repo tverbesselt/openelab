@@ -12,6 +12,8 @@ import { ALLE_VORMEN, KEUZES, OUDE_NAMEN } from "@/components/maken/keuzes";
 import { Keuzescherm } from "@/components/maken/Keuzescherm";
 import { Resultaat } from "@/components/maken/Resultaat";
 import { Bestemming } from "@/components/maken/Bestemming";
+import { VindbaarheidVelden } from "@/components/maken/VindbaarheidVelden";
+import { LEGE_VINDBAARHEID, bekendeVakken, metVindbaarheid } from "@/lib/vindbaarheid";
 import { TaalKiezer } from "@/components/maken/TaalKiezer";
 import { Stap } from "@/components/maken/Stap";
 import type { VormProps } from "@/werkvormen/soorten";
@@ -59,7 +61,9 @@ export default function MakenPagina() {
   // Waar het resultaat terechtkomt: standaard privé, want niet alles hoeft gedeeld.
   const [zichtbaarheid, setZichtbaarheid] = useState<Zichtbaarheid>("prive");
   const [mapId, setMapId] = useState("");
-  const { mappen, setMappen } = useMateriaal();
+  const { mappen, setMappen, oefeningen } = useMateriaal();
+  // Vak, trefwoorden en beschrijving: waarmee collega's het terugvinden.
+  const [vindbaarheid, setVindbaarheid] = useState(LEGE_VINDBAARHEID);
 
   // Taal van de voorleesknop. Alleen zinvol bij materiaal dat voorgelezen wordt.
   const [spraakTaal, setSpraakTaal] = useState(STANDAARD_TAAL);
@@ -73,10 +77,11 @@ export default function MakenPagina() {
     createdAt: new Date().toISOString().split("T")[0],
   });
 
-  const bewaar = async (nieuwe: Exercise[]) => {
+  const bewaar = async (uitFormulier: Exercise[]) => {
     if (bezig) return;
     setBezig(true);
     setFout("");
+    const nieuwe = uitFormulier.map((ex) => metVindbaarheid(ex, vindbaarheid, false));
     try {
       await opslag.maakOefeningen(nieuwe);
 
@@ -122,13 +127,20 @@ export default function MakenPagina() {
 
   /* ── Wat elke werkvorm deelt: zichtbaarheid, map, taal ─────────────────── */
   const bestemming = (
-    <Bestemming
-      zichtbaarheid={zichtbaarheid}
-      setZichtbaarheid={setZichtbaarheid}
-      mapId={mapId}
-      setMapId={setMapId}
-      mappen={eigenMappen(mappen, gebruiker)}
-    />
+    <>
+      <VindbaarheidVelden
+        waarde={vindbaarheid}
+        onWijzig={setVindbaarheid}
+        vakken={bekendeVakken(oefeningen)}
+      />
+      <Bestemming
+        zichtbaarheid={zichtbaarheid}
+        setZichtbaarheid={setZichtbaarheid}
+        mapId={mapId}
+        setMapId={setMapId}
+        mappen={eigenMappen(mappen, gebruiker)}
+      />
+    </>
   );
 
   const vormProps: VormProps = {

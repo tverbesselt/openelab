@@ -39,12 +39,38 @@ const INSTELLINGEN = {
 };
 
 describe("beheerders", () => {
-  it("een aangemelde gebruiker leest alleen zijn eigen vermelding; niemand schrijft", async () => {
+  const nieuw = { toegevoegdDoor: EMAIL.beheerder.toLowerCase(), op: "2026-11-24T09:00:00.000Z" };
+
+  it("een aangemelde gebruiker leest alleen zijn eigen vermelding en schrijft niets", async () => {
     await assertSucceeds(getDoc(doc(db(omgeving, "beheerder"), "beheerders", EMAIL.beheerder.toLowerCase())));
+    await assertSucceeds(getDoc(doc(db(omgeving, "leraar"), "beheerders", EMAIL.leraar)));
     await assertFails(getDoc(doc(db(omgeving, "leraar"), "beheerders", EMAIL.beheerder.toLowerCase())));
-    await assertFails(getDocs(collection(db(omgeving, "beheerder"), "beheerders")));
-    await assertFails(setDoc(doc(db(omgeving, "beheerder"), "beheerders", EMAIL.leraar), { sinds: "nu" }));
-    await assertFails(deleteDoc(doc(db(omgeving, "beheerder"), "beheerders", EMAIL.beheerder.toLowerCase())));
+    await assertFails(getDocs(collection(db(omgeving, "leraar"), "beheerders")));
+    // Zichzelf beheerder maken kan niet.
+    await assertFails(setDoc(doc(db(omgeving, "leraar"), "beheerders", EMAIL.leraar), nieuw));
+    await assertFails(deleteDoc(doc(db(omgeving, "leraar"), "beheerders", EMAIL.beheerder.toLowerCase())));
+  });
+
+  it("een beheerder ziet de lijst, voegt een collega toe en haalt hem weer weg", async () => {
+    const beheerder = db(omgeving, "beheerder");
+    await assertSucceeds(getDocs(collection(beheerder, "beheerders")));
+    await assertSucceeds(setDoc(doc(beheerder, "beheerders", EMAIL.leraar), nieuw));
+    // Vanaf nu beheert die collega mee.
+    await assertSucceeds(getDocs(collection(db(omgeving, "leraar"), "beheerders")));
+    await assertSucceeds(deleteDoc(doc(beheerder, "beheerders", EMAIL.leraar)));
+    await assertFails(getDocs(collection(db(omgeving, "leraar"), "beheerders")));
+  });
+
+  it("alleen een e-mailadres in kleine letters, zonder extra velden, en nooit jezelf weghalen", async () => {
+    const beheerder = db(omgeving, "beheerder");
+    await assertFails(setDoc(doc(beheerder, "beheerders", "geen-adres"), nieuw));
+    // Met hoofdletters zou de regel isBeheerder() de vermelding nooit terugvinden.
+    await assertFails(setDoc(doc(beheerder, "beheerders", "Sofie.Peeters@voorbeeld.school"), nieuw));
+    await assertFails(setDoc(doc(beheerder, "beheerders", EMAIL.leraar), { ...nieuw, rol: "super" }));
+    await assertSucceeds(setDoc(doc(beheerder, "beheerders", EMAIL.leraar), nieuw));
+    // Een bestaande vermelding verandert niet, en zo blijft er altijd een beheerder over.
+    await assertFails(updateDoc(doc(beheerder, "beheerders", EMAIL.leraar), { op: "later" }));
+    await assertFails(deleteDoc(doc(beheerder, "beheerders", EMAIL.beheerder.toLowerCase())));
   });
 });
 

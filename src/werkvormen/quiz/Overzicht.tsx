@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, Download, RotateCcw } from "lucide-react";
 import { opslag } from "@/lib/opslag";
+import { bestandsnaam, downloadCsv } from "@/lib/csv";
 import type { Quizresultaat } from "@/lib/types";
 import { Studietip } from "@/components/Studietip";
 import type { LeraarProps } from "../soorten";
@@ -15,6 +16,7 @@ import type { LeraarProps } from "../soorten";
 export default function Overzicht({ oefening }: LeraarProps<"quiz" | "lezen">) {
   const [resultaten, setResultaten] = useState<Quizresultaat[] | null>(null);
   const [open, setOpen] = useState(false);
+  const [fout, setFout] = useState("");
 
   useEffect(() => {
     opslag
@@ -37,6 +39,32 @@ export default function Overzicht({ oefening }: LeraarProps<"quiz" | "lezen">) {
     .sort((a, b) => b.fout - a.fout);
 
   const moeilijkste = perVraag[0];
+
+  const download = () =>
+    downloadCsv(bestandsnaam(oefening.title, "struikelvragen"), [
+      ["Vraag", "Keer fout", "Keer gemaakt", "Percentage fout"],
+      ...perVraag.map(({ vraag, fout: keerFout }) => [
+        vraag.question,
+        keerFout,
+        totaal,
+        `${Math.round((keerFout / totaal) * 100)}%`,
+      ]),
+    ]);
+
+  const wis = async () => {
+    const vraag =
+      `De telling van ${totaal} ${totaal === 1 ? "beurt" : "beurten"} wissen en opnieuw beginnen?\n\n` +
+      "Handig voor een nieuwe groep. Download de cijfers eerst als je ze wil bewaren: dit kan je niet ongedaan maken.";
+    if (!confirm(vraag)) return;
+    try {
+      await opslag.wisQuizresultaten(oefening.id);
+      setResultaten([]);
+      setOpen(false);
+      setFout("");
+    } catch {
+      setFout("Wissen is niet gelukt. Kijk je verbinding na en probeer opnieuw.");
+    }
+  };
 
   return (
     <section className="max-w-lg mx-auto border-t border-slate-200 pt-6">
@@ -63,6 +91,25 @@ export default function Overzicht({ oefening }: LeraarProps<"quiz" | "lezen">) {
             ? `Struikelvraag: "${moeilijkste.vraag.question}"`
             : "Alle vragen gingen tot nu toe juist."}
       </p>
+
+      {totaal > 0 && (
+        <div className="mt-3 ml-6 flex flex-wrap gap-x-4 gap-y-1">
+          <button onClick={download} className="text-xs font-bold text-merk-900 hover:underline inline-flex items-center gap-1.5">
+            <Download className="w-3.5 h-3.5" />
+            Download voor Excel
+          </button>
+          <button onClick={wis} className="text-xs font-bold text-slate-600 hover:text-rose-700 inline-flex items-center gap-1.5">
+            <RotateCcw className="w-3.5 h-3.5" />
+            Begin opnieuw te tellen
+          </button>
+        </div>
+      )}
+
+      {fout && (
+        <p role="alert" className="mt-3 ml-6 text-xs font-semibold text-rose-800">
+          {fout}
+        </p>
+      )}
 
       {moeilijkste && moeilijkste.fout > 0 && (
         <Studietip

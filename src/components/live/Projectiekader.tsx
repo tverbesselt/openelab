@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Eye, EyeOff, Square, Users } from "lucide-react";
+import { Download, Eye, EyeOff, Square, Users } from "lucide-react";
 import QRCode from "qrcode";
 import { merkTint } from "@/lib/instellingen/kleur";
 import { opslagGedeeld } from "@/lib/opslag";
+import { bestandsnaam, datumTijd, downloadCsv } from "@/lib/csv";
 import type { LopendeSessie } from "./useLiveSessie";
 import { DemoStemmen } from "./DemoStemmen";
 import { VOLSCHERM_KLASSE, VolledigSchermKnop, useVolledigScherm } from "@/components/VolledigScherm";
@@ -26,7 +27,7 @@ export function Projectiekader({
   voetnoot?: string;
   children: React.ReactNode;
 }) {
-  const { sessie, antwoorden, fout, wijzig, sluitAf } = lopend;
+  const { sessie, antwoorden, stemmen, fout, wijzig, sluitAf } = lopend;
   const volScherm = useVolledigScherm();
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [joinUrl, setJoinUrl] = useState("");
@@ -44,6 +45,36 @@ export function Projectiekader({
   }, [sessie.code]);
 
   const totaal = antwoorden.length;
+
+  /** Het resultaat als bestand: de sessie zelf verdwijnt na een maand. */
+  const download = () => {
+    let rijen: (string | number)[][];
+    if (sessie.opties.length > 0) {
+      rijen = sessie.opties.map((optie, i) => [
+        sessie.juisteOptie === i ? `${optie} (juist)` : optie,
+        stemmen[i] ?? 0,
+      ]);
+    } else {
+      // Een woordwolk: elk woord met hoe vaak het viel, het vaakste eerst.
+      const telling = new Map<string, { woord: string; aantal: number }>();
+      for (const a of antwoorden) {
+        const woord = a.woord?.trim();
+        if (!woord) continue;
+        const sleutel = woord.toLowerCase();
+        const bestaand = telling.get(sleutel);
+        if (bestaand) bestaand.aantal++;
+        else telling.set(sleutel, { woord, aantal: 1 });
+      }
+      rijen = [...telling.values()].sort((a, b) => b.aantal - a.aantal).map((t) => [t.woord, t.aantal]);
+    }
+    downloadCsv(bestandsnaam(sessie.vraag || sessie.titel, "resultaat"), [
+      [sessie.vraag || sessie.titel],
+      [datumTijd(sessie.gestartOp)],
+      [],
+      ["Antwoord", "Aantal"],
+      ...rijen,
+    ]);
+  };
   const pincode = `${sessie.code.slice(0, 3)} ${sessie.code.slice(3)}`;
 
   return (
@@ -70,6 +101,16 @@ export function Projectiekader({
               ? "Verberg de tussenstand voor cursisten"
               : "Toon de tussenstand aan cursisten"}
           </span>
+        </button>
+
+        <button
+          onClick={download}
+          disabled={totaal === 0}
+          className="text-xs font-bold text-slate-500 hover:text-merk-900 disabled:opacity-40 flex items-center gap-1"
+          title="Bewaar het resultaat als bestand voor Excel"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span>Download het resultaat</span>
         </button>
 
         <VolledigSchermKnop

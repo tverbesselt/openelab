@@ -22,6 +22,7 @@ import { MAX_LOGO, normaliseer, type Instellingen } from "@/lib/instellingen/typ
 import { FUNCTIEGROEPEN, HANGT_AF_VAN, isExtraFunctie, type FunctieId } from "@/lib/instellingen/functies";
 import { KLEURSCHEMAS, contrast, isHex, maakPalet, type Tint } from "@/lib/instellingen/kleur";
 import { WERKVORMEN } from "@/lib/labels";
+import { Beheerders, Gebruik } from "@/components/beheer/Beheerders";
 
 /*
  * Beheer: alles wat deze installatie van Open E-lab eigen maakt.
@@ -166,6 +167,8 @@ export default function BeheerPagina() {
       <Tips concept={concept} wijzig={wijzig} />
       {firebaseConfigured && <Spraak />}
       {firebaseConfigured && <ToegangBlok concept={concept} wijzig={wijzig} />}
+      <Beheerders />
+      <Gebruik />
 
       {/* Bewaren blijft altijd in beeld: de pagina is lang. */}
       <div className="fixed inset-x-0 bottom-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200">

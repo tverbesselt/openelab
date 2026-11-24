@@ -50,11 +50,17 @@ describe("sessie", () => {
     await assertFails(setDoc(doc(db(omgeving, "leraar"), "sessies", "444444"), sessie({ type: "bingo" })));
   });
 
-  it("wie de pincode kent, volgt de sessie; lijsten zijn dicht", async () => {
+  it("wie de pincode kent, volgt de sessie; een lijst krijgt alleen de leraar, van zijn eigen sessies", async () => {
     await zetSessie();
     await assertSucceeds(getDoc(doc(db(omgeving, "anoniem"), "sessies", CODE)));
     await assertFails(getDocs(collection(db(omgeving, "anoniem"), "sessies")));
     await assertFails(getDocs(collection(db(omgeving, "collega"), "sessies")));
+    await assertFails(getDocs(collection(db(omgeving, "leraar"), "sessies")));
+    const van = (wie: "leraar" | "collega" | "cursist", hostId: string) =>
+      getDocs(query(collection(db(omgeving, wie), "sessies"), where("hostId", "==", hostId)));
+    await assertSucceeds(van("leraar", UID.leraar));
+    await assertFails(van("collega", UID.leraar));
+    await assertFails(van("cursist", UID.cursist));
   });
 
   it("alleen de host stuurt de sessie en kan ze niet aan een ander geven", async () => {

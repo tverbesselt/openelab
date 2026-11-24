@@ -15,9 +15,10 @@ import {
   Building2,
   Trophy,
   Pencil,
+  UserCheck,
 } from "lucide-react";
 import { useInstellingen } from "@/lib/instellingen/InstellingenProvider";
-import { Exercise } from "@/lib/types";
+import { Exercise, OefeningKort } from "@/lib/types";
 import {
   WERKVORMEN,
   ZICHTBAARHEID,
@@ -32,6 +33,11 @@ interface MateriaalKaartProps {
   /** Toont de leraaracties (delen, klassikaal starten, ordenen). */
   isLeraar: boolean;
   isEigen?: boolean;
+  /**
+   * Mag de kijker dit aanpassen, verbergen en verwijderen? De maker altijd; een beheerder
+   * ook bij gedeeld materiaal van een collega. Leeg = alleen de maker.
+   */
+  magBeheren?: boolean;
   /** Namen van de mappen waarin dit materiaal zit. */
   mapNamen?: string[];
   onDelen: (ex: Exercise) => void;
@@ -39,14 +45,20 @@ interface MateriaalKaartProps {
   onVerwijder?: (id: string) => void;
   onInMap?: (ex: Exercise) => void;
   /** Alleen voor een beheerder, bij materiaal dat met de organisatie gedeeld is. */
-  onInOrganisatiemap?: (ex: Exercise) => void;
-  onZichtbaarheid?: (ex: Exercise) => void;
+  onInOrganisatiemap?: (ex: OefeningKort) => void;
+  onZichtbaarheid?: (ex: OefeningKort) => void;
+  /** Alleen voor een beheerder, bij gedeeld materiaal van een collega: zelf de maker worden. */
+  onOvernemen?: (ex: OefeningKort) => void;
+  /** Staat de bibliotheek in selectiemodus, dan toont de kaart een vinkje. */
+  onSelecteer?: (ex: OefeningKort) => void;
+  geselecteerd?: boolean;
 }
 
 export function MateriaalKaart({
   ex,
   isLeraar,
   isEigen,
+  magBeheren: magBeherenProp,
   mapNamen,
   onDelen,
   onKopieer,
@@ -54,7 +66,11 @@ export function MateriaalKaart({
   onInMap,
   onInOrganisatiemap,
   onZichtbaarheid,
+  onOvernemen,
+  onSelecteer,
+  geselecteerd,
 }: MateriaalKaartProps) {
+  const magBeheren = magBeherenProp ?? !!isEigen;
   const werkvorm = WERKVORMEN[ex.type];
   const Icon = werkvorm.icon;
   const klassikaal = isKlassikaal(ex);
@@ -65,7 +81,22 @@ export function MateriaalKaart({
   const zichtbaarheid = ZICHTBAARHEID[ex.visibility];
 
   return (
-    <article className="bg-white rounded-2xl border border-slate-200 hover:border-merk transition-colors flex flex-col overflow-hidden">
+    <article
+      className={`relative bg-white rounded-2xl border transition-colors flex flex-col overflow-hidden ${
+        geselecteerd ? "border-merk-800 ring-2 ring-merk/40" : "border-slate-200 hover:border-merk"
+      }`}
+    >
+      {onSelecteer && (
+        <label className="absolute top-3 right-3 z-10 flex items-center justify-center w-8 h-8 rounded-lg bg-white/95 border border-slate-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!geselecteerd}
+            onChange={() => onSelecteer(ex)}
+            aria-label={`${ex.title} selecteren`}
+            className="w-4 h-4 accent-merk-800"
+          />
+        </label>
+      )}
       {ex.cover?.soort === "afbeelding" && (
         // Een omslagfoto, bijvoorbeeld uit een geïmporteerde Kahoot. Klein en laag, zodat de
         // titel de kaart blijft dragen.
@@ -119,6 +150,12 @@ export function MateriaalKaart({
           )}
 
           <span>{isEigen ? "van jou" : ex.creatorName}</span>
+
+          {ex.vak && (
+            <span className="px-2 py-0.5 rounded-md font-semibold bg-merk-50 text-merk-900">
+              {ex.vak}
+            </span>
+          )}
         </div>
 
         {mapNamen && mapNamen.length > 0 && (
@@ -140,7 +177,7 @@ export function MateriaalKaart({
                 <Eye className="w-4 h-4" />
               </Link>
 
-              {isEigen && kanAanpassen(ex.type) && (
+              {magBeheren && kanAanpassen(ex.type) && (
                 <Link
                   href={`/bewerken/${ex.id}`}
                   className="p-2 rounded-lg text-slate-500 hover:text-merk-900 hover:bg-merk-50 transition-colors"
@@ -162,14 +199,21 @@ export function MateriaalKaart({
                     In organisatiemap plaatsen
                   </MenuKnop>
                 )}
-                {isEigen && onZichtbaarheid && (
+                {magBeheren && onZichtbaarheid && (
                   <MenuKnop
                     icon={ex.visibility === "prive" ? Building2 : Lock}
                     onClick={() => onZichtbaarheid(ex)}
                   >
                     {ex.visibility === "prive"
                       ? "Delen met de hele school"
-                      : "Terugzetten op alleen ik"}
+                      : isEigen
+                        ? "Terugzetten op alleen ik"
+                        : "Uit de bibliotheek halen"}
+                  </MenuKnop>
+                )}
+                {!isEigen && magBeheren && onOvernemen && (
+                  <MenuKnop icon={UserCheck} onClick={() => onOvernemen(ex)}>
+                    Overnemen als maker
                   </MenuKnop>
                 )}
                 {onKopieer && (
@@ -177,9 +221,9 @@ export function MateriaalKaart({
                     {isEigen ? "Dupliceren" : "Kopiëren naar mijn materiaal"}
                   </MenuKnop>
                 )}
-                {isEigen && onVerwijder && (
+                {magBeheren && onVerwijder && (
                   <MenuKnop icon={Trash2} onClick={() => onVerwijder(ex.id)} gevaarlijk>
-                    Verwijderen
+                    Naar de prullenbak
                   </MenuKnop>
                 )}
               </Menu>

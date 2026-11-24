@@ -56,6 +56,8 @@ Beheerders staan in Firestore in de collectie `beheerders`, zodat niemand zichze
 
 Een beheerder mag altijd aanmelden als leraar, ook voordat de schooldomeinen ingesteld zijn.
 
+Volgende beheerders voeg je toe in de app zelf, onder **Beheer > Beheerders**. Daar haal je ze ook weer weg; jezelf weghalen kan niet, zodat er altijd een beheerder overblijft.
+
 ---
 
 ## 4. Huisstijl en toegang instellen in de app

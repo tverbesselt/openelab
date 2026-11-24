@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Folder, FolderPlus, ArrowRight, Lock, Building2 } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { opslag, generateShortCode, useMateriaal } from "@/lib/opslag";
-import { Exercise, Lesmap } from "@/lib/types";
+import { Lesmap, OefeningKort } from "@/lib/types";
 import { eigenMappen, isEigenMateriaal } from "@/lib/labels";
 import { LeraarPoort } from "@/components/LeraarPoort";
 
@@ -21,9 +21,12 @@ export default function MappenPagina() {
     );
   }
 
-  const mijnMappen = eigenMappen(mappen, gebruiker);
+  const alleMijnMappen = eigenMappen(mappen, gebruiker);
+  // Een map in een map vind je in die map; hier staat alleen het hoogste niveau.
+  const bestaat = new Set(alleMijnMappen.map((m) => m.id));
+  const mijnMappen = alleMijnMappen.filter((m) => !m.bovenMapId || !bestaat.has(m.bovenMapId));
   const mijnOefeningen = oefeningen.filter((ex) => isEigenMateriaal(ex, gebruiker));
-  const inEenMap = new Set(mijnMappen.flatMap((m) => m.exerciseIds));
+  const inEenMap = new Set(alleMijnMappen.flatMap((m) => m.exerciseIds));
   const ongeordend = mijnOefeningen.filter((ex) => !inEenMap.has(ex.id));
 
   const maakMap = async (titel: string) => {
@@ -84,7 +87,7 @@ export default function MappenPagina() {
           plaatsen&quot; bij een oefening in je bibliotheek.
         </p>
       ) : (
-        <MapLijst mappen={mijnMappen} oefeningen={oefeningen} />
+        <MapLijst mappen={mijnMappen} alle={alleMijnMappen} oefeningen={oefeningen} />
       )}
 
       {ongeordend.length > 0 && (
@@ -180,7 +183,16 @@ function NieuweMap({
   );
 }
 
-function MapLijst({ mappen, oefeningen }: { mappen: Lesmap[]; oefeningen: Exercise[] }) {
+function MapLijst({
+  mappen,
+  alle,
+  oefeningen,
+}: {
+  mappen: Lesmap[];
+  /** Alle eigen mappen, om de submappen te tellen. */
+  alle: Lesmap[];
+  oefeningen: OefeningKort[];
+}) {
   return (
     <div className="divide-y divide-slate-200 border-y border-slate-200">
       {mappen.map((map) => {
@@ -188,6 +200,7 @@ function MapLijst({ mappen, oefeningen }: { mappen: Lesmap[]; oefeningen: Exerci
           const ex = oefeningen.find((o) => o.id === id);
           return ex?.visibility === "prive";
         }).length;
+        const aantalSubmappen = alle.filter((m) => m.bovenMapId === map.id).length;
 
         return (
           <Link key={map.id} href={`/mappen/${map.id}`} className="flex items-center gap-3 py-4 group">
@@ -196,7 +209,12 @@ function MapLijst({ mappen, oefeningen }: { mappen: Lesmap[]; oefeningen: Exerci
               <span className="block text-sm font-bold text-slate-900 truncate group-hover:text-merk-900 transition-colors">
                 {map.title}
               </span>
+              {map.description && (
+                <span className="block text-xs text-slate-600 truncate">{map.description}</span>
+              )}
               <span className="block text-xs text-slate-500 flex items-center gap-1.5">
+                {aantalSubmappen > 0 &&
+                  `${aantalSubmappen} ${aantalSubmappen === 1 ? "submap" : "submappen"} · `}
                 {map.exerciseIds.length}{" "}
                 {map.exerciseIds.length === 1 ? "oefening" : "oefeningen"}
                 {aantalPrive > 0 && (

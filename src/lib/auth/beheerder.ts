@@ -8,7 +8,7 @@ import { getDb } from "@/lib/firebase/client";
  * organisatiemappen.
  *
  * Wie beheerder is, staat in Firestore: één document beheerders/{e-mailadres in kleine
- * letters} per persoon. Die lijst beheer je in de Firebase-console, niet in de app. De
+ * letters} per persoon. Een beheerder houdt die lijst bij in Beheer > Beheerders. De
  * regels steunen op datzelfde document, dus deze controle bepaalt alleen wat de app toont.
  */
 export async function isBeheerderAccount(email: string): Promise<boolean> {

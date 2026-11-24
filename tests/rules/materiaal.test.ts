@@ -120,7 +120,28 @@ describe("exit tickets en quizresultaten", () => {
     );
     await assertSucceeds(setDoc(doc(d, "oefeningen/o1/inzendingen", "i3"), { antwoorden: ["a"], op: NU }));
     await assertFails(updateDoc(doc(d, "oefeningen/o1/inzendingen", "i3"), { antwoorden: ["b"] }));
-    await assertFails(deleteDoc(doc(db(omgeving, "leraar"), "oefeningen/o1/inzendingen", "i3")));
+  });
+
+  it("alleen de maker wist wat cursisten instuurden, bijvoorbeeld voor een nieuwe groep", async () => {
+    await metRegelsUit(omgeving, async (d) => {
+      await setDoc(doc(d, "oefeningen/o1/inzendingen", "i1"), { antwoorden: ["a"], op: NU });
+      await setDoc(doc(d, "oefeningen/o1/resultaten", "r1"), { foutVragen: [], aantalVragen: 3, op: NU });
+    });
+    await assertFails(deleteDoc(doc(db(omgeving, "anoniem"), "oefeningen/o1/inzendingen", "i1")));
+    await assertFails(deleteDoc(doc(db(omgeving, "collega"), "oefeningen/o1/resultaten", "r1")));
+    await assertSucceeds(deleteDoc(doc(db(omgeving, "leraar"), "oefeningen/o1/inzendingen", "i1")));
+    await assertSucceeds(deleteDoc(doc(db(omgeving, "leraar"), "oefeningen/o1/resultaten", "r1")));
+  });
+
+  it("de vorige versie van een oefening is er alleen voor wie ze beheert", async () => {
+    const versie = { oefening: oefening(), bewaardOp: NU };
+    await assertSucceeds(setDoc(doc(db(omgeving, "leraar"), "oefeningen/o1/versies", "vorige"), versie));
+    await assertSucceeds(getDoc(doc(db(omgeving, "leraar"), "oefeningen/o1/versies", "vorige")));
+    await assertFails(getDoc(doc(db(omgeving, "collega"), "oefeningen/o1/versies", "vorige")));
+    await assertFails(getDoc(doc(db(omgeving, "anoniem"), "oefeningen/o1/versies", "vorige")));
+    await assertFails(setDoc(doc(db(omgeving, "collega"), "oefeningen/o1/versies", "vorige"), versie));
+    // Eén vorige versie, geen archief.
+    await assertFails(setDoc(doc(db(omgeving, "leraar"), "oefeningen/o1/versies", "ouder"), versie));
   });
 
   it("quizresultaten zijn anoniem en geaggregeerd", async () => {
@@ -134,6 +155,61 @@ describe("exit tickets en quizresultaten", () => {
     await assertFails(setDoc(doc(d, "oefeningen/o1/resultaten", "r3"), { foutVragen: [], aantalVragen: 0, op: NU }));
     await assertSucceeds(getDocs(collection(db(omgeving, "leraar"), "oefeningen/o1/resultaten")));
     await assertFails(getDocs(collection(db(omgeving, "collega"), "oefeningen/o1/resultaten")));
+  });
+});
+
+describe("een beheerder en het gedeelde materiaal", () => {
+  beforeEach(async () => {
+    await maakBeheerder(omgeving);
+    await metRegelsUit(omgeving, async (d) => {
+      await setDoc(doc(d, "oefeningen", "gedeeld"), oefening());
+      await setDoc(doc(d, "codes", "ABC123"), { soort: "oefening", doelId: "gedeeld", creatorId: UID.leraar });
+      await setDoc(doc(d, "oefeningen", "prive"), oefening({ visibility: "prive", shareCode: "PRV001" }));
+      await setDoc(doc(d, "oefeningen/gedeeld/inzendingen", "i1"), { antwoorden: ["a"], op: NU });
+    });
+  });
+
+  it("past gedeeld materiaal van een collega aan", async () => {
+    const beheerder = db(omgeving, "beheerder");
+    await assertSucceeds(
+      updateDoc(doc(beheerder, "oefeningen", "gedeeld"), { title: "Verbeterd", vak: "Aardrijkskunde" })
+    );
+    // Een gewone collega kan dat niet.
+    await assertFails(updateDoc(doc(db(omgeving, "collega"), "oefeningen", "gedeeld"), { title: "Gekaapt" }));
+  });
+
+  it("blijft van privé materiaal af", async () => {
+    const beheerder = db(omgeving, "beheerder");
+    await assertFails(updateDoc(doc(beheerder, "oefeningen", "prive"), { title: "Gekaapt" }));
+    await assertFails(deleteDoc(doc(beheerder, "oefeningen", "prive")));
+  });
+
+  it("haalt gedeeld materiaal uit de bibliotheek of zet het in de prullenbak", async () => {
+    const beheerder = db(omgeving, "beheerder");
+    await assertSucceeds(updateDoc(doc(beheerder, "oefeningen", "gedeeld"), { verwijderdOp: NU }));
+    await assertSucceeds(updateDoc(doc(beheerder, "oefeningen", "gedeeld"), { visibility: "prive" }));
+    // Eens privé is het weer van de maker alleen.
+    await assertFails(updateDoc(doc(beheerder, "oefeningen", "gedeeld"), { title: "Nog eens" }));
+  });
+
+  it("neemt gedeeld materiaal over, maar geeft het aan niemand anders", async () => {
+    const beheerder = db(omgeving, "beheerder");
+    await assertFails(updateDoc(doc(beheerder, "oefeningen", "gedeeld"), { creatorId: UID.collega }));
+    await assertSucceeds(
+      updateDoc(doc(beheerder, "oefeningen", "gedeeld"), { creatorId: UID.beheerder, creatorName: "Een beheerder" })
+    );
+    // De vorige maker kan er nu niet meer aan.
+    await assertFails(updateDoc(doc(db(omgeving, "leraar"), "oefeningen", "gedeeld"), { visibility: "prive" }));
+  });
+
+  it("verwijdert gedeeld materiaal voorgoed, met wat cursisten instuurden en de code", async () => {
+    const beheerder = db(omgeving, "beheerder");
+    await assertSucceeds(getDocs(collection(beheerder, "oefeningen/gedeeld/inzendingen")));
+    await assertSucceeds(deleteDoc(doc(beheerder, "oefeningen/gedeeld/inzendingen", "i1")));
+    const batch = writeBatch(beheerder);
+    batch.delete(doc(beheerder, "oefeningen", "gedeeld"));
+    batch.delete(doc(beheerder, "codes", "ABC123"));
+    await assertSucceeds(batch.commit());
   });
 });
 
@@ -199,11 +275,27 @@ describe("mappen", () => {
       await assertFails(updateDoc(doc(db(omgeving, "leraar"), "mappen", "wis"), { bovenMapId: "nt2" }));
     });
 
-    it("een persoonlijke map heeft geen bovenmap", async () => {
+    it("een persoonlijke map zit alleen in een eigen persoonlijke map", async () => {
+      // Niet in een organisatiemap.
       await assertFails(
         setDoc(doc(db(omgeving, "leraar"), "mappen", "m2"), lesmap({ shareCode: "MAP002", bovenMapId: "nt2" }))
       );
       await assertFails(updateDoc(doc(db(omgeving, "leraar"), "mappen", "eigen"), { bovenMapId: "nt2" }));
+      // Wel in een eigen map, en er weer uit.
+      await assertSucceeds(
+        setDoc(doc(db(omgeving, "leraar"), "mappen", "m2"), lesmap({ shareCode: "MAP002", bovenMapId: "eigen" }))
+      );
+      await assertSucceeds(updateDoc(doc(db(omgeving, "leraar"), "mappen", "m2"), { bovenMapId: deleteField() }));
+      // Niet in de map van een collega, niet in zichzelf en niet in haar eigen submap.
+      await assertFails(
+        setDoc(
+          doc(db(omgeving, "collega"), "mappen", "m3"),
+          lesmap({ shareCode: "MAP003", creatorId: UID.collega, bovenMapId: "eigen" })
+        )
+      );
+      await assertFails(updateDoc(doc(db(omgeving, "leraar"), "mappen", "eigen"), { bovenMapId: "eigen" }));
+      await assertSucceeds(updateDoc(doc(db(omgeving, "leraar"), "mappen", "m2"), { bovenMapId: "eigen" }));
+      await assertFails(updateDoc(doc(db(omgeving, "leraar"), "mappen", "eigen"), { bovenMapId: "m2" }));
       // Gewoon aanpassen blijft kunnen.
       await assertSucceeds(updateDoc(doc(db(omgeving, "leraar"), "mappen", "eigen"), { title: "Les 2" }));
     });

@@ -1,5 +1,5 @@
 import { Lock, Building2, History, Presentation, AudioLines, type LucideIcon } from "lucide-react";
-import { DidacticGoal, Exercise, ExerciseType, Lesmap, Zichtbaarheid } from "./types";
+import { DidacticGoal, Exercise, ExerciseType, Lesmap, OefeningKort, Zichtbaarheid } from "./types";
 import { WERKVORMEN, WERKVORM_LIJST, aantalItems } from "@/werkvormen/register";
 
 /**
@@ -213,6 +213,18 @@ export function isEigenMateriaal(ex: Exercise, eigenaar: Eigenaar | null | undef
   return isVan(ex, eigenaar);
 }
 
+/**
+ * Mag deze persoon dit materiaal aanpassen, verbergen of verwijderen? De maker altijd; een
+ * beheerder ook bij materiaal dat met heel de school gedeeld is.
+ */
+export function magMateriaalBeheren(
+  ex: Exercise | OefeningKort,
+  eigenaar: Eigenaar | null | undefined,
+  isBeheerder: boolean
+): boolean {
+  return isEigenMateriaal(ex, eigenaar) || (isBeheerder && ex.visibility === "organisatie");
+}
+
 /** Is deze map van deze leraar? */
 export function isEigenMap(map: Lesmap, eigenaar: Eigenaar | null | undefined): boolean {
   return isVan(map, eigenaar);
@@ -249,7 +261,9 @@ export function organisatieMappen(mappen: Lesmap[]): Lesmap[] {
     .sort((a, b) => a.title.localeCompare(b.title, "nl"));
 }
 
-/* ── Organisatiemappen in mappen ────────────────────────────────────────── */
+/* ── Mappen in mappen ───────────────────────────────────────────────────── */
+// De functies hieronder werken op één soort mappen tegelijk: geef ze de organisatiemappen,
+// of de persoonlijke mappen van één leraar.
 
 /**
  * De mappen die rechtstreeks in deze map zitten, alfabetisch. Met null krijg je het

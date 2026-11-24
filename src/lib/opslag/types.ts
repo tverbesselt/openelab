@@ -1,4 +1,5 @@
 import {
+  Beheerder,
   BordItem,
   Exercise,
   Herhaling,
@@ -6,8 +7,10 @@ import {
   Lesmap,
   LiveAntwoord,
   LiveSessie,
+  OefeningKort,
   Tekening,
   Quizresultaat,
+  VorigeVersie,
   WedstrijdAntwoord,
   WedstrijdSpeler,
 } from "@/lib/types";
@@ -37,7 +40,24 @@ export interface Opslag {
    * weggehaalde omslagfoto.
    */
   vervangOefening(oefening: Exercise): Promise<void>;
+  /** De versie van vóór de laatste aanpassing, of null als er geen is. */
+  vorigeVersie(id: string): Promise<VorigeVersie | null>;
+  /** Zet de vorige versie terug. Wat er nu staat, wordt zelf de vorige versie. */
+  herstelVorigeVersie(id: string): Promise<Exercise>;
+  /**
+   * Naar de prullenbak. De oefening verdwijnt uit elke lijst en cursisten kunnen ze niet
+   * meer openen, maar ze blijft bewaard, met haar code en haar resultaten.
+   */
   verwijderOefening(id: string): Promise<void>;
+  /** Uit de prullenbak terug in gebruik, met dezelfde code. */
+  herstelOefening(id: string): Promise<void>;
+  /** Voorgoed weg: de oefening, haar code, haar vorige versie en wat cursisten instuurden. */
+  wisOefening(id: string): Promise<void>;
+  /**
+   * Wat in de prullenbak zit: het eigen materiaal, en voor een beheerder ook gedeeld
+   * materiaal van collega's. Wat er langer dan PRULLENBAK_DAGEN zit, wordt hierbij gewist.
+   */
+  prullenbak(kijker: Eigenaar | null, alsBeheerder: boolean): Promise<OefeningKort[]>;
 
   /* Mappen */
 
@@ -48,11 +68,11 @@ export interface Opslag {
   map(id: string): Promise<Lesmap | null>;
   maakMap(map: Lesmap): Promise<void>;
   wijzigMap(id: string, wijziging: Partial<Lesmap>): Promise<void>;
-  /** Alleen organisatiemappen: zet de map in een andere map. null = het hoogste niveau. */
+  /** Zet de map in een andere map van dezelfde soort. null = het hoogste niveau. */
   verplaatsMap(id: string, bovenMapId: string | null): Promise<void>;
   /**
-   * Bij een organisatiemap schuiven haar submappen in dezelfde beweging een niveau hoger,
-   * naar de map waar zij zelf in zat. Zo raakt er nooit een map zoek.
+   * De submappen schuiven in dezelfde beweging een niveau hoger, naar de map waar zij zelf
+   * in zat. Zo raakt er nooit een map zoek.
    */
   verwijderMap(id: string): Promise<void>;
   /** Haal een oefening uit de ene map en zet ze in de andere, in één beweging. */
@@ -67,6 +87,12 @@ export interface Opslag {
   wijzigSessie(code: string, wijziging: Partial<LiveSessie>): Promise<void>;
   /** Volg één sessie; null zodra ze niet (meer) bestaat. Geeft een stopfunctie terug. */
   volgSessie(code: string, bij: (sessie: LiveSessie | null) => void): () => void;
+  /** De eigen sessies van de voorbije weken, nieuwste eerst. */
+  eigenSessies(hostId: string): Promise<LiveSessie[]>;
+  /** Een sessie en alles wat erin zit meteen weghalen, zonder op de vervaldatum te wachten. */
+  wisSessie(code: string): Promise<void>;
+  /** Alleen de host: de antwoorden van een sessie in één keer, om ze te bewaren. */
+  antwoorden(code: string): Promise<LiveAntwoord[]>;
   /** Alleen de leraar die de sessie host krijgt de antwoorden binnen. */
   volgAntwoorden(code: string, bij: (antwoorden: LiveAntwoord[]) => void): () => void;
   /**
@@ -123,6 +149,8 @@ export interface Opslag {
 
   stuurInzending(oefeningId: string, antwoorden: string[]): Promise<void>;
   inzendingen(oefeningId: string): Promise<Inzending[]>;
+  /** Alle inzendingen wissen, bijvoorbeeld voor een nieuwe groep. */
+  wisInzendingen(oefeningId: string): Promise<void>;
 
   /* Quizresultaten: geaggregeerd en anoniem, alleen voor de maker */
 
@@ -132,6 +160,13 @@ export interface Opslag {
     aantalVragen: number
   ): Promise<void>;
   quizresultaten(oefeningId: string): Promise<Quizresultaat[]>;
+  wisQuizresultaten(oefeningId: string): Promise<void>;
+
+  /* Beheerders: alleen een beheerder leest en wijzigt de lijst */
+
+  beheerders(): Promise<Beheerder[]>;
+  voegBeheerderToe(adres: string, door: string): Promise<void>;
+  verwijderBeheerder(adres: string): Promise<void>;
 
   /* Gespreid herhalen: van de cursist zelf, voor niemand anders leesbaar */
 

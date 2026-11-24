@@ -17,6 +17,8 @@ import {
   FolderInput,
   Folder,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Search,
 } from "lucide-react";
 import { opslag, generateShortCode, useMateriaal } from "@/lib/opslag";
@@ -56,13 +58,14 @@ export default function MapPagina() {
   const [delenOpen, setDelenOpen] = useState(false);
   const [voegToe, setVoegToe] = useState(false);
   const [wijzigNaam, setWijzigNaam] = useState<string | null>(null);
+  const [wijzigBeschrijving, setWijzigBeschrijving] = useState("");
   const [zoek, setZoek] = useState("");
   const [verplaatsVoor, setVerplaatsVoor] = useState<string | null>(null);
   const [doelMapId, setDoelMapId] = useState("");
   const [melding, setMelding] = useState<{ tekst: string; mapId: string } | null>(null);
 
   // Materiaal om toe te voegen, en de andere mappen om naar te verplaatsen.
-  const { oefeningen, mappen, orgMappen, setOrgMappen } = useMateriaal();
+  const { oefeningen, mappen, orgMappen, setOrgMappen, setMappen } = useMateriaal();
   const [verplaatsMap, setVerplaatsMap] = useState(false);
 
   useEffect(() => {
@@ -101,6 +104,8 @@ export default function MapPagina() {
     return map.exerciseIds
       .map((exId) => inhoudPerId[exId])
       .filter((e): e is Exercise => !!e)
+      // Wat in de prullenbak zit, is er voor niemand.
+      .filter((ex) => !ex.verwijderdOp)
       // Werd iets in een organisatiemap later terug privé gezet, dan is het niet meer
       // voor collega's bedoeld. De beheerder ziet het wel, om het op te ruimen.
       .filter((ex) => !isOrgMap || magBeheren || pastInOrganisatiemap(ex));
@@ -120,34 +125,47 @@ export default function MapPagina() {
     );
   }, [map, oefeningen, gebruiker, isOrgMap, zoek]);
 
+  /**
+   * De mappen van dezelfde soort als deze: de organisatiemappen, of de persoonlijke mappen
+   * van wie kijkt. Wie een persoonlijke map van een ander opent (met de code), krijgt hier
+   * niets en ziet dus alleen wat er rechtstreeks in zit.
+   */
+  const soortMappen = useMemo(
+    () => (isOrgMap ? orgMappen : mappen.filter((m) => !m.organisatie)),
+    [isOrgMap, orgMappen, mappen]
+  );
+  const zetSoortMappen = (nieuw: Lesmap[]) => (isOrgMap ? setOrgMappen(nieuw) : setMappen(nieuw));
+  /** Submappen ziet elke leraar bij de organisatie; bij een persoonlijke map alleen de eigenaar. */
+  const kentBoom = isOrgMap ? isLeraar : magBeheren;
+
   /** Waar een oefening uit deze map naartoe kan: een andere map van dezelfde soort. */
   const andereMappen = useMemo(() => {
     if (!map) return [];
-    return (isOrgMap ? orgMappen : mappen).filter((m) => m.id !== map.id);
-  }, [map, isOrgMap, orgMappen, mappen]);
+    return soortMappen.filter((m) => m.id !== map.id);
+  }, [map, soortMappen]);
 
-  /** Een organisatiemap herken je in een keuzelijst aan haar volledige pad. */
-  const mapNaam = (m: Lesmap) => (m.organisatie ? mapPadTekst(orgMappen, m.id) : m.title);
+  /** Een map herken je in een keuzelijst aan haar volledige pad. */
+  const mapNaam = (m: Lesmap) => mapPadTekst(soortMappen, m.id) || m.title;
 
-  /* ── Mappen in mappen, alleen bij de organisatie ─────────────────────── */
+  /* ── Mappen in mappen ────────────────────────────────────────────────── */
 
   const pad = useMemo(
-    () => (map && isOrgMap ? mapPad(orgMappen, map.id).slice(0, -1) : []),
-    [map, isOrgMap, orgMappen]
+    () => (map && kentBoom ? mapPad(soortMappen, map.id).slice(0, -1) : []),
+    [map, kentBoom, soortMappen]
   );
   const kinderen = useMemo(
-    () => (map && isOrgMap ? submappen(orgMappen, map.id) : []),
-    [map, isOrgMap, orgMappen]
+    () => (map && kentBoom ? submappen(soortMappen, map.id) : []),
+    [map, kentBoom, soortMappen]
   );
   /** Waar deze map naartoe kan: overal, behalve in zichzelf of in een van haar submappen. */
   const mogelijkeBovenmappen = useMemo(() => {
-    if (!map || !isOrgMap) return [];
-    const eronder = onderliggendeMapIds(orgMappen, map.id);
-    return orgMappen
+    if (!map || !kentBoom) return [];
+    const eronder = onderliggendeMapIds(soortMappen, map.id);
+    return soortMappen
       .filter((m) => m.id !== map.id && !eronder.has(m.id))
-      .map((m) => ({ id: m.id, naam: mapPadTekst(orgMappen, m.id) }))
+      .map((m) => ({ id: m.id, naam: mapPadTekst(soortMappen, m.id) }))
       .sort((a, b) => a.naam.localeCompare(b.naam, "nl"));
-  }, [map, isOrgMap, orgMappen]);
+  }, [map, kentBoom, soortMappen]);
 
   const maakSubmap = async (titel: string) => {
     if (!map || !gebruiker) return false;
@@ -160,12 +178,12 @@ export default function MapPagina() {
       creatorId: gebruiker.id,
       shareCode: generateShortCode(),
       createdAt: new Date().toISOString().split("T")[0],
-      organisatie: true,
+      ...(isOrgMap && { organisatie: true }),
       bovenMapId: map.id,
     };
     try {
       await opslag.maakMap(nieuw);
-      setOrgMappen([...orgMappen, nieuw]);
+      zetSoortMappen([...(isOrgMap ? orgMappen : mappen), nieuw]);
       setFout("");
       return true;
     } catch {
@@ -180,7 +198,7 @@ export default function MapPagina() {
       await opslag.verplaatsMap(map.id, bovenMapId);
       const verplaatst = { ...map, bovenMapId: bovenMapId ?? undefined };
       setMap(verplaatst);
-      setOrgMappen(orgMappen.map((m) => (m.id === map.id ? verplaatst : m)));
+      zetSoortMappen((isOrgMap ? orgMappen : mappen).map((m) => (m.id === map.id ? verplaatst : m)));
       setVerplaatsMap(false);
       setFout("");
     } catch {
@@ -215,29 +233,48 @@ export default function MapPagina() {
         for (const ex of oefeningen) if (verandering.exerciseIds.includes(ex.id)) perId[ex.id] = ex;
         setInhoudPerId(perId);
       }
+      // Ook de lijsten elders (mappenpagina, keuzelijsten) kennen de nieuwe naam meteen.
+      const gewijzigd = { ...map, ...verandering };
+      zetSoortMappen((isOrgMap ? orgMappen : mappen).map((m) => (m.id === map.id ? gewijzigd : m)));
       setFout("");
     } catch {
       setFout("De wijziging bewaren is niet gelukt. Kijk je verbinding na en probeer opnieuw.");
     }
   };
 
+  /**
+   * Schuif een oefening een plaats op. We wisselen met de buur die je ziet, niet met wat er
+   * in de lijst naast staat: een oefening die verborgen of weg is, telt niet mee.
+   */
+  const schuif = (exId: string, stap: -1 | 1) => {
+    if (!map) return;
+    const zichtbaar = inhoud.map((ex) => ex.id);
+    const buur = zichtbaar[zichtbaar.indexOf(exId) + stap];
+    if (!buur) return;
+    const exerciseIds = [...map.exerciseIds];
+    const a = exerciseIds.indexOf(exId);
+    const b = exerciseIds.indexOf(buur);
+    [exerciseIds[a], exerciseIds[b]] = [exerciseIds[b], exerciseIds[a]];
+    void wijzigMap({ exerciseIds });
+  };
+
   const verwijderMap = async () => {
     if (!map) return;
     const bovenMapId = map.bovenMapId ?? null;
-    const boven = bovenMapId ? orgMappen.find((m) => m.id === bovenMapId) : undefined;
+    const boven = bovenMapId ? soortMappen.find((m) => m.id === bovenMapId) : undefined;
     const naarBoven =
       kinderen.length === 0
         ? ""
         : ` ${kinderen.length === 1 ? "De submap schuift" : `De ${kinderen.length} submappen schuiven`} een niveau hoger, naar ${boven ? boven.title : "het hoogste niveau"}.`;
     const vraag = isOrgMap
       ? `Organisatiemap "${map.title}" verwijderen? De oefeningen blijven bestaan bij wie ze maakte.${naarBoven}`
-      : `Map "${map.title}" verwijderen? Je oefeningen blijven bestaan.`;
+      : `Map "${map.title}" verwijderen? Je oefeningen blijven bestaan. De code ${map.shareCode} van de map werkt daarna niet meer.${naarBoven}`;
     if (!confirm(vraag)) return;
     try {
       // De opslag schuift de submappen in dezelfde beweging een niveau hoger.
       await opslag.verwijderMap(map.id);
-      setOrgMappen(
-        orgMappen
+      zetSoortMappen(
+        (isOrgMap ? orgMappen : mappen)
           .filter((m) => m.id !== map.id)
           .map((m) => (m.bovenMapId === map.id ? { ...m, bovenMapId: bovenMapId ?? undefined } : m))
       );
@@ -287,11 +324,11 @@ export default function MapPagina() {
           </nav>
         ) : (
           <Link
-            href={isLeraar ? "/mappen" : "/"}
-            className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-merk-900 transition-colors"
+            href={pad.length > 0 ? `/mappen/${pad[pad.length - 1].id}` : isLeraar ? "/mappen" : "/"}
+            className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-merk-900 transition-colors min-w-0"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Terug</span>
+            <ArrowLeft className="w-4 h-4 shrink-0" />
+            <span className="truncate">{pad.length > 0 ? pad[pad.length - 1].title : "Terug"}</span>
           </Link>
         )}
 
@@ -320,26 +357,48 @@ export default function MapPagina() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (wijzigNaam.trim()) wijzigMap({ title: wijzigNaam.trim() });
+              if (wijzigNaam.trim()) {
+                wijzigMap({ title: wijzigNaam.trim(), description: wijzigBeschrijving.trim() });
+              }
               setWijzigNaam(null);
             }}
-            className="flex gap-2"
+            className="space-y-2"
           >
-            <input
-              type="text"
-              value={wijzigNaam}
-              onChange={(e) => setWijzigNaam(e.target.value)}
-              aria-label="Naam van de map"
-              autoFocus
-              className="flex-1 px-3 py-2 text-lg font-bold rounded-xl bg-white border border-veldrand text-slate-900 focus:border-merk-800 focus:ring-2 focus:ring-merk/40 focus:outline-none"
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={wijzigNaam}
+                onChange={(e) => setWijzigNaam(e.target.value)}
+                aria-label="Naam van de map"
+                maxLength={200}
+                autoFocus
+                className="flex-1 min-w-0 px-3 py-2 text-lg font-bold rounded-xl bg-white border border-veldrand text-slate-900 focus:border-merk-800 focus:ring-2 focus:ring-merk/40 focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="px-3 py-2 rounded-xl bg-merk-800 hover:bg-merk-900 text-white transition-colors"
+                aria-label="Naam en beschrijving bewaren"
+              >
+                <Check className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setWijzigNaam(null)}
+                className="px-3 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors"
+                aria-label="Annuleer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <textarea
+              value={wijzigBeschrijving}
+              onChange={(e) => setWijzigBeschrijving(e.target.value)}
+              aria-label="Beschrijving van de map"
+              placeholder="Beschrijving: waar dient deze map voor? (mag leeg blijven)"
+              rows={2}
+              maxLength={500}
+              className="w-full px-3 py-2 text-sm rounded-xl bg-white border border-veldrand text-slate-900 placeholder-slate-500 focus:border-merk-800 focus:ring-2 focus:ring-merk/40 focus:outline-none"
             />
-            <button
-              type="submit"
-              className="px-3 py-2 rounded-xl bg-merk-800 hover:bg-merk-900 text-white transition-colors"
-              aria-label="Naam bewaren"
-            >
-              <Check className="w-4 h-4" />
-            </button>
           </form>
         ) : (
           <div className="flex items-start gap-2">
@@ -348,9 +407,13 @@ export default function MapPagina() {
             </h1>
             {magBeheren && (
               <button
-                onClick={() => setWijzigNaam(map.title)}
+                onClick={() => {
+                  setWijzigNaam(map.title);
+                  setWijzigBeschrijving(map.description ?? "");
+                }}
                 className="p-1.5 mt-1 rounded-lg text-slate-500 hover:text-merk-900 hover:bg-slate-100 transition-colors shrink-0"
-                title="Naam aanpassen"
+                title="Naam en beschrijving aanpassen"
+                aria-label="Naam en beschrijving aanpassen"
               >
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -363,11 +426,11 @@ export default function MapPagina() {
           {inhoud.length} {inhoud.length === 1 ? "oefening" : "oefeningen"} · map van{" "}
           {isOrgMap ? "de organisatie" : map.creatorName}
         </p>
-        {map.description && (
-          <p className="text-sm text-slate-600 mt-2 leading-relaxed">{map.description}</p>
+        {map.description && wijzigNaam === null && (
+          <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-line">{map.description}</p>
         )}
 
-        {isOrgMap && magBeheren && (
+        {magBeheren && (isOrgMap || mogelijkeBovenmappen.length > 0) && (
           verplaatsMap ? (
             <form
               onSubmit={(e) => {
@@ -420,7 +483,7 @@ export default function MapPagina() {
         )}
       </header>
 
-      {isOrgMap && isLeraar && (kinderen.length > 0 || magBeheren) && (
+      {kentBoom && (kinderen.length > 0 || magBeheren) && (
         <section className="space-y-3">
           <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-600">
             Submappen
@@ -428,7 +491,7 @@ export default function MapPagina() {
           {kinderen.length > 0 && (
             <div className="divide-y divide-slate-200 border-y border-slate-200">
               {kinderen.map((kind) => {
-                const kleinkinderen = submappen(orgMappen, kind.id).length;
+                const kleinkinderen = submappen(soortMappen, kind.id).length;
                 return (
                   <Link key={kind.id} href={`/mappen/${kind.id}`} className="flex items-center gap-3 py-3 group">
                     <Folder className="w-4 h-4 text-slate-500 shrink-0" />
@@ -518,6 +581,29 @@ export default function MapPagina() {
                   <span>Start</span>
                 </Link>
 
+                {magBeheren && inhoud.length > 1 && (
+                  <span className="flex flex-col shrink-0">
+                    <button
+                      onClick={() => schuif(ex.id, -1)}
+                      disabled={index === 0}
+                      className="p-0.5 rounded text-slate-500 hover:text-merk-900 hover:bg-slate-100 disabled:opacity-25 transition-colors"
+                      title="Een plaats omhoog"
+                      aria-label={`${ex.title} een plaats omhoog`}
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => schuif(ex.id, 1)}
+                      disabled={index === inhoud.length - 1}
+                      className="p-0.5 rounded text-slate-500 hover:text-merk-900 hover:bg-slate-100 disabled:opacity-25 transition-colors"
+                      title="Een plaats omlaag"
+                      aria-label={`${ex.title} een plaats omlaag`}
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </span>
+                )}
+
                 {magBeheren && andereMappen.length > 0 && (
                   <button
                     onClick={() => {
@@ -566,7 +652,7 @@ export default function MapPagina() {
                     <option value="">Kies een map</option>
                     {andereMappen
                       .map((m) => ({ id: m.id, naam: mapNaam(m) }))
-                      .sort((a, b) => (isOrgMap ? a.naam.localeCompare(b.naam, "nl") : 0))
+                      .sort((a, b) => a.naam.localeCompare(b.naam, "nl"))
                       .map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.naam}
